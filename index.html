@@ -1,0 +1,2009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Journals Claims Console — Sage</title>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   APPLIED SAGE UX DESIGN GUIDELINES
+   · Foundations: Branding, Typography, Responsive design,
+     Voice, Speed & performance, DEI, Ability biases
+   · Accessibility: Skip link, Landmarks, Markup, Reading order,
+     Alt text, Accessible wireframe (annotation overlay)
+   · Components: Breadcrumb, Accordion, Button
+   ═════════════════════════════════════════════════════════ */
+
+  :root {
+    --sage-navy:      #001A69;
+    --sage-navy-700:  #0d2a85;
+    --sage-navy-100:  #e6e9f3;
+    --sage-navy-050:  #f3f5fa;
+    --grey-900:       #333333;
+    --grey-700:       #555a64;
+    --grey-500:       #767c86;
+    --grey-300:       #c7cad0;
+    --grey-200:       #e0e2e6;
+    --grey-100:       #eef0f3;
+    --grey-050:       #f7f8fa;
+    --white:          #ffffff;
+    --success-700:    #1e6b3a;
+    --success-100:    #e3f1e7;
+    --warn-700:       #8a5a00;
+    --warn-100:       #fbf2dc;
+    --error-700:      #962820;
+    --error-100:      #fbe5e2;
+    --line:           var(--grey-200);
+    --ink:            var(--grey-900);
+    --ink-muted:      var(--grey-700);
+    --ink-subtle:     var(--grey-500);
+    --bp-tablet:   768px;
+    --bp-desktop:  1024px;
+    --content-max: 1224px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--grey-050); color: var(--ink);
+    font-size: 14px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .skip-link {
+    position: absolute; left: 8px; top: -40px;
+    background: var(--sage-navy); color: var(--white);
+    padding: 8px 14px; border-radius: 3px;
+    text-decoration: none; font-weight: 600;
+    z-index: 1000; transition: top 0.15s;
+  }
+  .skip-link:focus { top: 8px; outline: 2px solid #ffd23f; outline-offset: 2px; }
+
+  a:focus-visible, button:focus-visible, input:focus-visible,
+  textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--sage-navy);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  [role="banner"] a:focus-visible,
+  [role="banner"] input:focus-visible,
+  [role="banner"] [tabindex]:focus-visible { outline-color: #ffd23f; }
+
+  .app {
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas: "banner" "primary" "main";
+    min-height: 100vh;
+  }
+  @media (min-width: 768px) {
+    .app {
+      grid-template-columns: 220px 1fr;
+      grid-template-rows: 56px 1fr;
+      grid-template-areas: "banner banner" "primary main";
+      height: 100vh;
+      overflow: hidden;
+    }
+  }
+  @media (min-width: 1024px) {
+    .app { grid-template-columns: 232px 1fr; }
+  }
+
+  [role="banner"] {
+    grid-area: banner;
+    background: var(--sage-navy);
+    color: var(--white);
+    display: flex; align-items: center;
+    padding: 8px 16px; gap: 12px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--sage-navy-700);
+  }
+  @media (min-width: 768px) {
+    [role="banner"] { padding: 0 20px; gap: 18px; flex-wrap: nowrap; height: 56px; }
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 600; color: var(--white); text-decoration: none; flex: none;
+  }
+  .brand .s-mark {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 26px; font-weight: 700; line-height: 1; letter-spacing: -0.02em;
+  }
+  .brand .product {
+    font-size: 13px; font-weight: 500; opacity: 0.9;
+    border-left: 1px solid rgba(255,255,255,0.3);
+    padding-left: 12px; line-height: 1;
+  }
+  .banner-search {
+    margin-left: auto;
+    display: flex; align-items: center;
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 5px 10px; border-radius: 3px;
+    width: 100%; order: 3;
+  }
+  @media (min-width: 768px) { .banner-search { width: 280px; order: 0; } }
+  @media (min-width: 1024px) { .banner-search { width: 320px; } }
+  .banner-search input {
+    background: transparent; border: 0; color: var(--white);
+    font: inherit; font-size: 13px; outline: none;
+    width: 100%; margin-left: 6px;
+  }
+  .banner-search input::placeholder { color: rgba(255,255,255,0.7); }
+  .banner-user {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--white); font-size: 13px; margin-left: auto;
+  }
+  @media (max-width: 767px) {
+    .banner-user .name-text { display: none; }
+  }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--white); color: var(--sage-navy);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; flex: none;
+  }
+
+  [aria-label="Primary"] {
+    grid-area: primary;
+    background: var(--white);
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto; overflow-y: hidden;
+    padding: 8px 0;
+    -webkit-overflow-scrolling: touch;
+  }
+  @media (max-width: 767px) {
+    [aria-label="Primary"] .nav-group h2 { display: none; }
+    [aria-label="Primary"] .nav-group { display: inline-block; vertical-align: top; }
+    [aria-label="Primary"] .nav-list { display: flex; flex-wrap: nowrap; gap: 4px; padding: 0 12px; }
+    [aria-label="Primary"] .nav-list a { white-space: nowrap; padding: 8px 12px; }
+    [aria-label="Primary"] .nav-list a[aria-current="page"]::before { display: none; }
+  }
+  @media (min-width: 768px) {
+    [aria-label="Primary"] {
+      border-right: 1px solid var(--line); border-bottom: 0;
+      overflow-y: auto; overflow-x: hidden; padding: 14px 0;
+    }
+  }
+  .nav-group + .nav-group { margin-top: 14px; }
+  @media (max-width: 767px) { .nav-group + .nav-group { margin-top: 0; } }
+  .nav-group h2 {
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink-subtle);
+    margin: 0 0 6px; padding: 0 18px;
+  }
+  .nav-list { list-style: none; margin: 0; padding: 0 8px; }
+  .nav-list li { margin: 0; }
+  .nav-list a {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; color: var(--ink);
+    text-decoration: none; border-radius: 3px;
+    font-size: 13.5px; line-height: 1.3;
+    position: relative;
+  }
+  .nav-list a:hover { background: var(--grey-100); }
+  .nav-list a[aria-current="page"] {
+    background: var(--sage-navy-100); color: var(--sage-navy); font-weight: 600;
+  }
+  .nav-list a[aria-current="page"]::before {
+    content: ''; position: absolute;
+    left: 0; top: 4px; bottom: 4px;
+    width: 3px; background: var(--sage-navy); border-radius: 2px;
+  }
+  .nav-list .count {
+    margin-left: auto;
+    font-size: 12px; color: var(--ink-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+  .nav-list a[aria-current="page"] .count { color: var(--sage-navy); }
+  .nav-icon { width: 16px; height: 16px; flex: none; color: var(--ink-muted); }
+  .nav-list a[aria-current="page"] .nav-icon { color: var(--sage-navy); }
+
+  main { grid-area: main; overflow-y: auto; background: var(--grey-050); }
+  .page-head {
+    background: var(--white);
+    border-bottom: 1px solid var(--line);
+    padding: 14px 16px 16px;
+  }
+  @media (min-width: 768px) { .page-head { padding: 14px 24px 16px; } }
+
+  [aria-label="Breadcrumb"] ol {
+    list-style: none; margin: 0 0 8px; padding: 0;
+    display: flex; flex-wrap: wrap; gap: 6px;
+    font-size: 12.5px;
+  }
+  [aria-label="Breadcrumb"] li {
+    display: flex; align-items: center; gap: 6px;
+    color: var(--ink-muted);
+  }
+  [aria-label="Breadcrumb"] li:not(:last-child)::after {
+    content: '>'; color: var(--ink-subtle); margin-left: 6px;
+  }
+  [aria-label="Breadcrumb"] a { color: var(--sage-navy); text-decoration: underline; }
+  [aria-label="Breadcrumb"] a:hover { color: var(--sage-navy-700); }
+  [aria-label="Breadcrumb"] li[aria-current="page"] { color: var(--ink); font-weight: 500; }
+
+  h1 { font-size: 22px; font-weight: 600; color: var(--sage-navy); margin: 0 0 4px; line-height: 1.2; }
+  @media (min-width: 768px) { h1 { font-size: 26px; } }
+  .page-head .lead { color: var(--ink-muted); font-size: 13px; margin: 0; }
+  .page-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+
+  .btn {
+    border: 1px solid var(--grey-300); background: var(--white);
+    color: var(--sage-navy);
+    font: inherit; font-size: 13px; font-weight: 500;
+    padding: 6px 14px; border-radius: 3px;
+    cursor: pointer; line-height: 1.4;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { background: var(--grey-100); border-color: var(--grey-500); }
+  .btn-primary { background: var(--sage-navy); color: var(--white); border-color: var(--sage-navy); }
+  .btn-primary:hover { background: var(--sage-navy-700); border-color: var(--sage-navy-700); }
+  .btn-danger { color: var(--error-700); border-color: var(--error-700); }
+  .btn-danger:hover { background: var(--error-100); }
+  .btn-sm { padding: 4px 10px; font-size: 12.5px; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .info-banner {
+    background: var(--sage-navy-050);
+    border: 1px solid var(--sage-navy-100);
+    color: var(--sage-navy);
+    padding: 8px 14px;
+    font-size: 12.5px;
+    text-align: center;
+  }
+  .info-banner button {
+    background: transparent; border: 0; color: var(--sage-navy);
+    text-decoration: underline; cursor: pointer;
+    font: inherit; font-size: 12.5px; padding: 0; margin-left: 8px;
+  }
+
+  .work {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 16px;
+    align-items: start;
+    max-width: var(--content-max);
+    margin: 0 auto;
+  }
+  @media (min-width: 768px) { .work { padding: 16px 24px 24px; } }
+  @media (min-width: 1280px) { .work { grid-template-columns: 1fr 480px; } }
+
+  [aria-label="Key metrics"] {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  @media (min-width: 768px) { [aria-label="Key metrics"] { grid-template-columns: repeat(4, 1fr); } }
+  .kpi { padding: 14px 18px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  @media (min-width: 768px) { .kpi { border-bottom: 0; } }
+  .kpi:nth-child(2n) { border-right: 0; }
+  @media (min-width: 768px) {
+    .kpi { border-right: 1px solid var(--line); }
+    .kpi:nth-child(2n) { border-right: 1px solid var(--line); }
+    .kpi:last-child { border-right: 0; }
+  }
+  .kpi-label { font-size: 11.5px; color: var(--ink-muted); margin: 0 0 4px; font-weight: 500; }
+  .kpi-val { font-size: 26px; font-weight: 600; color: var(--sage-navy); line-height: 1; font-variant-numeric: tabular-nums; }
+  .kpi-delta { font-size: 12px; color: var(--ink-muted); margin-top: 4px; }
+  .kpi-delta.up   { color: var(--error-700); }
+  .kpi-delta.down { color: var(--success-700); }
+
+  .queue-panel {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .queue-panel > h2 {
+    font-size: 14px; font-weight: 600; color: var(--sage-navy);
+    margin: 0; padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .queue-panel > h2 .selection-info {
+    font-size: 12px; font-weight: 500; color: var(--ink-muted);
+    margin-left: auto;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .filters {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    background: var(--grey-050);
+  }
+  .chip {
+    border: 1px solid var(--grey-300);
+    background: var(--white); color: var(--ink);
+    font: inherit; font-size: 12.5px;
+    padding: 4px 10px; border-radius: 100px;
+    cursor: pointer; line-height: 1.4;
+  }
+  .chip:hover { border-color: var(--grey-500); }
+  .chip[aria-pressed="true"] {
+    background: var(--sage-navy); color: var(--white); border-color: var(--sage-navy);
+  }
+  .filter-divider { width: 1px; background: var(--grey-300); margin: 2px 4px; }
+
+  .queue-thead { display: none; }
+  @media (min-width: 1024px) {
+    .queue-thead {
+      display: grid;
+      grid-template-columns: 32px 80px 30px 1fr 120px 70px 60px 70px;
+      gap: 12px; padding: 8px 16px;
+      background: var(--grey-100);
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--ink-muted);
+      border-bottom: 1px solid var(--line);
+    }
+  }
+  .queue-list { max-height: calc(100vh - 380px); overflow-y: auto; }
+  .queue-row {
+    display: grid;
+    grid-template-columns: 32px auto 1fr auto;
+    gap: 12px; align-items: center;
+    padding: 12px 16px;
+    border: 0; border-bottom: 1px solid var(--line);
+    background: var(--white); cursor: pointer;
+    width: 100%; text-align: left;
+    font: inherit; color: var(--ink);
+  }
+  @media (min-width: 1024px) {
+    .queue-row {
+      grid-template-columns: 32px 80px 30px 1fr 120px 70px 60px 70px;
+    }
+  }
+  .queue-row:last-child { border-bottom: 0; }
+  .queue-row:hover { background: var(--grey-050); }
+  .queue-row[aria-selected="true"] {
+    background: var(--sage-navy-050);
+    box-shadow: inset 3px 0 0 var(--sage-navy);
+  }
+  .queue-row[aria-selected="true"] .claim-id { color: var(--sage-navy); }
+  .queue-row .row-checkbox {
+    display: flex; align-items: center; justify-content: center;
+  }
+  .queue-row .row-checkbox input { width: 16px; height: 16px; cursor: pointer; }
+
+  @media (max-width: 1023px) {
+    .queue-row .qcol-id { display: none; }
+    .queue-row .qcol-status,
+    .queue-row .qcol-age,
+    .queue-row .qcol-pri { display: none; }
+    .queue-row .qcol-subj .mobile-meta {
+      display: block;
+      font-size: 11.5px; color: var(--ink-muted); margin-top: 4px;
+    }
+    .queue-row .qcol-subj .mobile-meta .pill { margin-right: 4px; }
+  }
+  @media (min-width: 1024px) {
+    .queue-row .mobile-meta { display: none; }
+  }
+
+  .claim-id {
+    font-family: 'SF Mono', Consolas, 'Liberation Mono', monospace;
+    font-size: 12px; font-weight: 600; color: var(--ink-muted);
+  }
+  .type-badge {
+    width: 28px; height: 22px; border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+  }
+  .type-badge.print { background: var(--sage-navy-100); color: var(--sage-navy); }
+  .type-badge.elec  { background: var(--grey-100); color: var(--grey-900); border: 1px solid var(--grey-300); }
+  .claim-subj { display: block; font-size: 13.5px; font-weight: 500; color: var(--ink); margin-bottom: 2px; }
+  .claim-meta { display: block; font-size: 12px; color: var(--ink-muted); }
+
+  .pill {
+    display: inline-flex; align-items: center;
+    font-size: 11.5px; font-weight: 500;
+    padding: 2px 8px; border-radius: 3px; line-height: 1.5;
+  }
+  .pill-new      { background: var(--sage-navy-100); color: var(--sage-navy); }
+  .pill-progress { background: var(--warn-100);      color: var(--warn-700); }
+  .pill-blocked  { background: var(--error-100);     color: var(--error-700); }
+  .pill-resolved { background: var(--success-100);   color: var(--success-700); }
+  .pill-neutral  { background: var(--grey-100);      color: var(--grey-700); }
+
+  .age { font-size: 12.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .age.breach { color: var(--error-700); font-weight: 600; }
+  .pri { font-size: 12px; font-weight: 600; }
+  .pri-p1 { color: var(--error-700); }
+  .pri-p2 { color: var(--warn-700); }
+  .pri-p3 { color: var(--ink-muted); }
+  .owner-badge {
+    display: inline-flex;
+    width: 26px; height: 26px; border-radius: 50%;
+    align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 600;
+    color: var(--white); background: var(--sage-navy);
+  }
+  .owner-badge.unassigned {
+    background: var(--grey-200); color: var(--ink-muted);
+    border: 1px dashed var(--grey-500);
+  }
+
+  [role="complementary"] {
+    background: var(--white); border: 1px solid var(--line);
+    border-radius: 3px;
+  }
+  @media (min-width: 1280px) {
+    [role="complementary"] {
+      position: sticky; top: 16px;
+      max-height: calc(100vh - 92px);
+      overflow-y: auto;
+    }
+  }
+  .detail-empty {
+    padding: 60px 32px; text-align: center; color: var(--ink-muted);
+  }
+  .detail-empty svg { color: var(--grey-300); margin-bottom: 8px; }
+  .detail-empty p { margin: 0; font-size: 13px; }
+
+  .detail-head { padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .detail-id {
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 11.5px; color: var(--sage-navy);
+    font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; margin: 0 0 4px;
+  }
+  h2.detail-title {
+    font-size: 16px; font-weight: 600; color: var(--ink);
+    margin: 0 0 10px; line-height: 1.3;
+  }
+  h2.detail-title:focus { outline: none; }
+  .detail-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+
+  .detail-controls {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding-top: 4px; border-top: 1px dashed var(--line);
+    margin-top: 4px; padding-top: 12px;
+  }
+  .control-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .control-row label {
+    font-size: 11.5px; font-weight: 600;
+    color: var(--ink-muted); text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .select {
+    border: 1px solid var(--grey-300);
+    background: var(--white);
+    font: inherit; font-size: 12.5px;
+    padding: 4px 8px; border-radius: 3px;
+    color: var(--ink);
+  }
+
+  .accordion { border-top: 1px solid var(--line); }
+  .accordion-item { border-bottom: 1px solid var(--line); }
+  .accordion-header {
+    width: 100%; display: flex; align-items: center;
+    background: var(--white); border: 0;
+    padding: 14px 20px; text-align: left; cursor: pointer;
+    font: inherit; font-size: 13px; font-weight: 600;
+    color: var(--ink);
+  }
+  .accordion-header:hover { background: var(--grey-050); }
+  .accordion-header .chevron {
+    margin-left: auto;
+    width: 16px; height: 16px;
+    color: var(--ink-muted); transition: transform 0.2s;
+  }
+  .accordion-header[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+  .accordion-header[aria-expanded="true"] {
+    color: var(--sage-navy); background: var(--sage-navy-050);
+  }
+  .accordion-header[aria-expanded="true"] .chevron { color: var(--sage-navy); }
+  .accordion-panel { padding: 0 20px 16px; display: none; }
+  .accordion-panel[data-state="open"] { display: block; }
+
+  h3.section-title {
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--ink-muted); margin: 0 0 10px;
+  }
+
+  .suggested {
+    background: var(--sage-navy-050);
+    border: 1px solid var(--sage-navy-100);
+    border-left: 3px solid var(--sage-navy);
+    padding: 12px 14px; border-radius: 3px;
+    margin: 16px 20px 0;
+  }
+  .suggested-label {
+    font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--sage-navy); margin: 0 0 4px;
+  }
+  .suggested h4 {
+    font-size: 13.5px; font-weight: 600; color: var(--ink); margin: 0 0 4px;
+  }
+  .suggested p { font-size: 13px; color: var(--ink-muted); margin: 0 0 10px; }
+  .suggested-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .desc { font-size: 13px; color: var(--ink); line-height: 1.55; margin: 0; }
+  .customer-name { font-size: 14px; font-weight: 600; color: var(--ink); margin: 0 0 2px; }
+  .customer-meta { font-size: 12.5px; color: var(--ink-muted); margin: 0 0 12px; }
+
+  dl.kv {
+    display: grid; grid-template-columns: 130px 1fr;
+    gap: 6px 12px; font-size: 12.5px; margin: 0;
+  }
+  dl.kv dt { color: var(--ink-muted); }
+  dl.kv dd { margin: 0; color: var(--ink); }
+  dl.kv code {
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 11.5px; background: var(--grey-100);
+    padding: 1px 5px; border-radius: 2px;
+  }
+  dl.kv .editable {
+    display: inline-flex; align-items: center; gap: 4px;
+    cursor: text;
+  }
+  dl.kv input {
+    border: 1px solid var(--grey-300);
+    background: var(--white); padding: 2px 6px;
+    border-radius: 2px; font: inherit; font-size: 12.5px;
+    width: 100%;
+  }
+
+  .actions-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  .action-tile {
+    border: 1px solid var(--grey-300);
+    background: var(--white); color: var(--ink);
+    font: inherit; text-align: left;
+    padding: 10px 12px; border-radius: 3px;
+    cursor: pointer;
+  }
+  .action-tile:hover { border-color: var(--sage-navy); background: var(--sage-navy-050); }
+  .action-tile-title { font-size: 13px; font-weight: 500; color: var(--ink); display: block; margin-bottom: 2px; }
+  .action-tile-sub { font-size: 11.5px; color: var(--ink-muted); display: block; }
+
+  .activity { list-style: none; margin: 0; padding: 0; }
+  .activity li {
+    display: grid; grid-template-columns: 16px 1fr;
+    gap: 10px; padding-bottom: 14px; position: relative;
+  }
+  .activity li:last-child { padding-bottom: 0; }
+  .activity li:not(:last-child)::after {
+    content: ''; position: absolute;
+    left: 7px; top: 14px; bottom: 0;
+    width: 1px; background: var(--grey-200);
+  }
+  .act-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--grey-300);
+    margin-top: 4px; margin-left: 3px; z-index: 1;
+  }
+  .act-dot.create { background: var(--sage-navy); }
+  .act-dot.action { background: var(--success-700); }
+  .act-dot.note   { background: var(--grey-500); }
+  .act-dot.email  { background: #7c3aed; }
+  .act-text { font-size: 12.5px; }
+  .act-text strong { font-weight: 600; color: var(--ink); }
+  .act-time { font-size: 11.5px; color: var(--ink-muted); margin-top: 2px; }
+  .act-body {
+    background: var(--grey-050);
+    border-left: 2px solid var(--grey-200);
+    padding: 6px 10px; margin-top: 4px;
+    font-size: 12.5px; color: var(--ink);
+    border-radius: 0 2px 2px 0;
+  }
+  .act-body.email { border-left-color: #7c3aed; background: #f5f0ff; }
+
+  /* Note composer */
+  .note-form {
+    margin-top: 12px;
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+  .note-form textarea {
+    width: 100%;
+    border: 1px solid var(--grey-300);
+    border-radius: 3px;
+    padding: 8px 10px;
+    font: inherit; font-size: 13px;
+    color: var(--ink);
+    resize: vertical;
+    min-height: 60px;
+  }
+  .note-form .note-actions {
+    display: flex; justify-content: flex-end; gap: 6px;
+    margin-top: 6px;
+  }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--sage-navy); color: var(--white);
+    padding: 10px 18px; border-radius: 3px;
+    font-size: 13px; font-weight: 500;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 999;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  [role="contentinfo"] {
+    grid-column: 1 / -1;
+    margin-top: 24px; padding: 16px 24px;
+    background: var(--white); border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--ink-muted);
+    text-align: center;
+  }
+  [role="contentinfo"] button {
+    background: transparent; border: 0;
+    color: var(--sage-navy); text-decoration: underline;
+    cursor: pointer; font: inherit; font-size: 12px;
+  }
+
+  /* Modal dialog */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0, 26, 105, 0.4);
+    display: none; align-items: center; justify-content: center;
+    z-index: 200; padding: 20px;
+  }
+  .modal-backdrop.show { display: flex; }
+  .modal {
+    background: var(--white);
+    border-radius: 4px;
+    box-shadow: 0 24px 48px rgba(0,0,0,0.18);
+    width: 100%; max-width: 560px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+  }
+  .modal-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-header h2 {
+    margin: 0; font-size: 18px; font-weight: 600;
+    color: var(--sage-navy);
+  }
+  .modal-close {
+    background: transparent; border: 0;
+    width: 28px; height: 28px;
+    border-radius: 3px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink-muted);
+  }
+  .modal-close:hover { background: var(--grey-100); color: var(--ink); }
+  .modal-body { padding: 20px 24px; }
+  .modal-footer {
+    padding: 12px 24px;
+    border-top: 1px solid var(--line);
+    display: flex; justify-content: flex-end; gap: 8px;
+  }
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block; font-size: 12px; font-weight: 600;
+    color: var(--ink); margin-bottom: 4px;
+  }
+  .field label .req { color: var(--error-700); margin-left: 2px; }
+  .field input, .field textarea, .field select {
+    width: 100%; padding: 7px 10px;
+    border: 1px solid var(--grey-300);
+    border-radius: 3px;
+    font: inherit; font-size: 13px;
+    color: var(--ink); background: var(--white);
+  }
+  .field input:focus, .field textarea:focus, .field select:focus {
+    border-color: var(--sage-navy);
+  }
+  .field textarea { resize: vertical; min-height: 80px; }
+  .field .help {
+    font-size: 11.5px; color: var(--ink-muted); margin-top: 3px;
+  }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 480px) { .field-row { grid-template-columns: 1fr; } }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--grey-300); border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--grey-500); }
+
+  /* Accessibility annotation overlay */
+  body.show-annotations [role="banner"] { outline: 2px solid #b91c1c; outline-offset: -2px; position: relative; }
+  body.show-annotations [aria-label="Primary"] { outline: 2px solid #2563eb; outline-offset: -2px; position: relative; }
+  body.show-annotations [aria-label="Breadcrumb"] { outline: 2px solid #2563eb; outline-offset: -2px; position: relative; }
+  body.show-annotations [role="search"] { outline: 2px solid #7c3aed; outline-offset: -2px; position: relative; }
+  body.show-annotations [role="main"] { outline: 2px solid #047857; outline-offset: -2px; position: relative; }
+  body.show-annotations [role="complementary"] { outline: 2px solid #c2410c; outline-offset: -2px; position: relative; }
+  body.show-annotations [role="contentinfo"] { outline: 2px solid #4338ca; outline-offset: -2px; position: relative; }
+  body.show-annotations [role="banner"]::before,
+  body.show-annotations [aria-label="Primary"]::before,
+  body.show-annotations [aria-label="Breadcrumb"]::before,
+  body.show-annotations [role="search"]::before,
+  body.show-annotations [role="main"]::before,
+  body.show-annotations [role="complementary"]::before,
+  body.show-annotations [role="contentinfo"]::before {
+    position: absolute; top: 4px; left: 4px;
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 10px; font-weight: 700;
+    padding: 2px 6px; border-radius: 2px;
+    color: var(--white); z-index: 99; line-height: 1;
+  }
+  body.show-annotations [role="banner"]::before { content: 'banner'; background: #b91c1c; }
+  body.show-annotations [aria-label="Primary"]::before { content: 'navigation: Primary'; background: #2563eb; }
+  body.show-annotations [aria-label="Breadcrumb"]::before { content: 'navigation: Breadcrumb'; background: #2563eb; position: relative; display: inline-block; margin-bottom: 4px; }
+  body.show-annotations [role="search"]::before { content: 'search'; background: #7c3aed; top: -8px; left: 4px; }
+  body.show-annotations [role="main"]::before { content: 'main'; background: #047857; }
+  body.show-annotations [role="complementary"]::before { content: 'complementary'; background: #c2410c; }
+  body.show-annotations [role="contentinfo"]::before { content: 'contentinfo'; background: #4338ca; }
+  body.show-annotations h1, body.show-annotations h2, body.show-annotations h3 {
+    position: relative; outline: 1px dashed #1d4ed8; outline-offset: 2px;
+  }
+  body.show-annotations h1::after, body.show-annotations h2::after, body.show-annotations h3::after {
+    position: absolute; right: -28px; top: 0;
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 9.5px; font-weight: 700;
+    background: #1d4ed8; color: var(--white);
+    padding: 1px 4px; border-radius: 2px; line-height: 1.4;
+  }
+  body.show-annotations h1::after { content: 'h1'; }
+  body.show-annotations h2::after { content: 'h2'; }
+  body.show-annotations h3::after { content: 'h3'; }
+
+  .annotation-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+  .annotation-toggle input { margin: 0; }
+</style>
+</head>
+<body>
+
+<a href="#main-content" class="skip-link">Skip to main content</a>
+
+<div class="app">
+
+  <header role="banner">
+    <a href="#" class="brand" aria-label="Sage — Claims Console home">
+      <span class="s-mark" aria-hidden="true">S</span>
+      <span>Sage</span>
+      <span class="product">Claims Console</span>
+    </a>
+    <form role="search" class="banner-search" aria-label="Site search" onsubmit="event.preventDefault();">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>
+      </svg>
+      <label for="global-search" class="sr-only">Search claims, customers, or ISSN</label>
+      <input id="global-search" type="search" placeholder="Search claims, customers, ISSN…" autocomplete="off" />
+    </form>
+    <div class="banner-user">
+      <span class="name-text" aria-hidden="true">Wayne Buckle</span>
+      <div class="avatar" aria-label="Account menu for Wayne Buckle">WB</div>
+    </div>
+  </header>
+
+  <nav aria-label="Primary">
+    <div class="nav-group">
+      <h2>Workspace</h2>
+      <ul class="nav-list">
+        <li><a href="#" data-view="all" aria-current="page">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+          All claims <span class="count" id="count-all">0</span>
+        </a></li>
+        <li><a href="#" data-view="mine">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
+          Assigned to me <span class="count" id="count-mine">0</span>
+        </a></li>
+        <li><a href="#" data-view="breach">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          SLA breaches <span class="count" id="count-breach">0</span>
+        </a></li>
+        <li><a href="#" data-view="unassigned">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Unassigned <span class="count" id="count-un">0</span>
+        </a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <h2>By type</h2>
+      <ul class="nav-list">
+        <li><a href="#" data-view="print">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg>
+          Print fulfilment <span class="count" id="count-print">0</span>
+        </a></li>
+        <li><a href="#" data-view="elec">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>
+          Electronic access <span class="count" id="count-elec">0</span>
+        </a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <h2>Insights</h2>
+      <ul class="nav-list">
+        <li><a href="#" data-view="reports">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 21h18M5 21V10M10 21V4M15 21V13M20 21V8"/></svg>
+          Reports
+        </a></li>
+        <li><a href="#" data-view="vendors">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7h18l-2 13H5z"/><path d="M8 7V5a4 4 0 018 0v2"/></svg>
+          Vendor performance
+        </a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main role="main" id="main-content">
+    <div class="info-banner" role="note">
+      Prototype with mock data — your changes are saved locally in this browser.
+      <button id="reset-data">Reset to defaults</button>
+    </div>
+
+    <div class="page-head">
+      <nav aria-label="Breadcrumb">
+        <ol>
+          <li><a href="#">Operations</a></li>
+          <li><a href="#">Customer Service</a></li>
+          <li aria-current="page">Journals Claims</li>
+        </ol>
+      </nav>
+      <h1>Journals claims</h1>
+      <p class="lead">Internal handler workspace for print and electronic claims.</p>
+      <div class="page-actions">
+        <button class="btn btn-primary" id="btn-new-claim">+ New claim</button>
+        <button class="btn" id="btn-export">Export queue</button>
+        <label class="annotation-toggle btn" style="margin-left:auto;">
+          <input type="checkbox" id="toggle-annotations" />
+          Show accessibility markup
+        </label>
+      </div>
+    </div>
+
+    <div class="work">
+      <section aria-label="Key metrics">
+        <div class="kpi"><p class="kpi-label">Open claims</p><div class="kpi-val" id="kpi-open">—</div><div class="kpi-delta up">+12 vs last week</div></div>
+        <div class="kpi"><p class="kpi-label">SLA at risk</p><div class="kpi-val" id="kpi-risk">—</div><div class="kpi-delta">No change</div></div>
+        <div class="kpi"><p class="kpi-label">Average handle time</p><div class="kpi-val">2.4d</div><div class="kpi-delta down">−0.6d vs target</div></div>
+        <div class="kpi"><p class="kpi-label">First-contact resolution</p><div class="kpi-val">71%</div><div class="kpi-delta down">+4pp vs last week</div></div>
+      </section>
+
+      <section class="queue-panel" aria-labelledby="queue-heading">
+        <h2 id="queue-heading">
+          Claim queue
+          <span class="selection-info" id="selection-info" hidden>
+            <span id="selection-count">0 selected</span>
+            <button class="btn btn-sm" id="bulk-assign">Assign…</button>
+            <button class="btn btn-sm" id="bulk-status">Set status…</button>
+            <button class="btn btn-sm btn-danger" id="bulk-clear">Clear</button>
+          </span>
+        </h2>
+
+        <div class="filters" role="group" aria-label="Queue filters">
+          <button class="chip" data-filter="status:all" aria-pressed="true">All status</button>
+          <button class="chip" data-filter="status:new" aria-pressed="false">New</button>
+          <button class="chip" data-filter="status:progress" aria-pressed="false">In progress</button>
+          <button class="chip" data-filter="status:blocked" aria-pressed="false">Blocked</button>
+          <button class="chip" data-filter="status:resolved" aria-pressed="false">Resolved</button>
+          <span class="filter-divider" aria-hidden="true"></span>
+          <button class="chip" data-filter="pri:p1" aria-pressed="false">P1 only</button>
+          <button class="chip" data-filter="cust:tier1" aria-pressed="false">Tier-1 customers</button>
+        </div>
+
+        <div role="table" aria-label="Open claims">
+          <div class="queue-thead" role="row">
+            <span role="columnheader">
+              <input type="checkbox" id="select-all" aria-label="Select all visible claims" />
+            </span>
+            <span role="columnheader">Claim</span>
+            <span role="columnheader"><span class="sr-only">Type</span></span>
+            <span role="columnheader">Subject and customer</span>
+            <span role="columnheader">Status</span>
+            <span role="columnheader">Age</span>
+            <span role="columnheader">Priority</span>
+            <span role="columnheader">Owner</span>
+          </div>
+          <div class="queue-list" id="queue-list" role="rowgroup"></div>
+        </div>
+      </section>
+
+      <aside role="complementary" aria-label="Claim detail" id="detail">
+        <div class="detail-empty">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 10h6M9 14h4"/>
+          </svg>
+          <p>Select a claim from the queue to view details, customer information, and suggested actions.</p>
+        </div>
+      </aside>
+
+      <footer role="contentinfo">
+        <p>Sage Claims Console · Internal tool · Version 0.1 prototype · Built to Sage UX Design Guidelines</p>
+      </footer>
+    </div>
+  </main>
+</div>
+
+<!-- ───── Modal dialog ───── -->
+<div class="modal-backdrop" id="modal-backdrop" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" id="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">—</h2>
+      <button class="modal-close" id="modal-close" aria-label="Close dialog">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer" id="modal-footer"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+// PERSISTENCE & STATE
+// ═══════════════════════════════════════════════
+const STORAGE_KEY = 'sage_claims_v1';
+const ME = 'WB';
+const HANDLERS = [
+  { initials: 'WB', name: 'Wayne Buckle' },
+  { initials: 'SH', name: 'Sarah Hartley' },
+  { initials: 'MR', name: 'Marcus Reid' },
+  { initials: 'AK', name: 'Anika Krause' },
+  { initials: 'PI', name: 'Priya Iyer' }
+];
+
+const DEFAULT_CLAIMS = [
+  { id: 'JCL-4471', type: 'elec', status: 'new', priority: 'P1',
+    subject: 'IP authentication failing for entire campus subnet',
+    customer: 'Yale University Library', tier: 'tier1',
+    contact: 'e.morton@yale.edu', issn: '— (institutional)', journal: 'Multiple titles (47 affected)',
+    age: '4h', breach: false, owner: null,
+    desc: 'Library reports that as of 09:15 EST, all access to Sage Journals from the campus IP range 130.132.0.0/16 is returning 401 errors. Estimated 12,000 affected users. Other Sage products on adjacent ranges work normally.',
+    fields: { 'Customer ID': 'CUST-00214', 'Subscription': 'Premier 2025 (multi-title)', 'Hosting platform': 'Atypon Literatum', 'IP range on file': '130.132.0.0/16', 'Last successful auth': '08:47 EST today', 'Renewal date': '31 Dec 2025' },
+    suggested: { title: 'Likely cause: IP range expired in entitlement record', text: 'Yale renewed 31 Dec — entitlement record shows expiry 31 Dec but new range not propagated. Restoring from renewal record will restore access in approximately 10 minutes.', primary: 'Restore IP entitlement', secondary: 'Escalate to Atypon' },
+    activity: [
+      { type: 'create', who: 'Auto-intake (email)', when: '09:18 today', text: 'Claim created from inbound email to <strong>institutional@sagepub.com</strong>. Categorised as <strong>electronic / IP failure</strong> by NLP rules (94% confidence).' },
+      { type: 'note', who: 'System', when: '09:19 today', text: 'Customer matched to <strong>Yale University Library</strong> (CUST-00214) via sender domain.' }
+    ]
+  },
+  { id: 'JCL-4470', type: 'elec', status: 'progress', priority: 'P2',
+    subject: 'DOI link returning 404 on full-text PDF',
+    customer: 'University of Edinburgh', tier: 'tier1',
+    contact: 'libraryhelp@ed.ac.uk', issn: '0033-2917', journal: 'Psychological Medicine',
+    age: '1d 3h', breach: false, owner: 'SH',
+    desc: 'DOI 10.1017/S0033291724001234 resolves but full-text PDF returns 404. HTML version loads correctly. Issue first seen yesterday afternoon.',
+    fields: { 'Customer ID': 'CUST-00387', 'Subscription': 'Cambridge Journals — full collection', 'Affected DOI': '10.1017/S0033291724001234', 'Article ID': 'ART-2024-09812', 'Hosting platform': 'Cambridge Core' },
+    suggested: { title: 'Article PDF not propagated to CDN', text: 'Article was published 14 March — CDN cache shows PDF asset missing. Trigger republish from CMS to restore in approximately 5 minutes.', primary: 'Trigger CDN republish', secondary: 'Send PDF to customer' },
+    activity: [
+      { type: 'create', who: 'libraryhelp@ed.ac.uk', when: 'Yesterday 14:22', text: 'Inbound email — DOI 404 issue.' },
+      { type: 'action', who: 'Sarah Hartley', when: 'Yesterday 16:01', text: 'Claimed and categorised. Confirmed reproduces from external test environment.' },
+      { type: 'note', who: 'Sarah Hartley', when: 'Today 09:45', text: 'Checked CMS — article exists, PDF asset URL returns 404 from CDN. Likely propagation issue.' }
+    ]
+  },
+  { id: 'JCL-4468', type: 'print', status: 'progress', priority: 'P2',
+    subject: 'Issue 4 not received — third report this volume',
+    customer: 'Imperial College London', tier: 'tier1',
+    contact: 'periodicals@imperial.ac.uk', issn: '1469-7793', journal: 'The Journal of Physiology',
+    age: '2d', breach: false, owner: 'MR',
+    desc: 'Library has not received Vol 603, Issue 4 (Feb 2025). This is the third missing issue this subscription year. Library requesting investigation of delivery route.',
+    fields: { 'Customer ID': 'CUST-00102', 'Subscription': 'Print + online combined', 'Affected issue': 'Vol 603, Issue 4', '3PL of record': 'OpenText / Sheridan', 'Delivery address': 'Periodicals, Imperial College, London SW7 2AZ', 'Previous misses (this vol)': 'Issues 1, 3' },
+    suggested: { title: 'Pattern detected — possible 3PL routing issue', text: 'Three misses in one volume year for the same address suggests systemic routing issue, not one-off. Recommend reship plus flag account for 3PL audit.', primary: 'Reship and flag for audit', secondary: 'Reship only' },
+    activity: [
+      { type: 'create', who: 'periodicals@imperial.ac.uk', when: '2 days ago', text: 'Inbound email — missing Issue 4.' },
+      { type: 'action', who: 'Marcus Reid', when: 'Yesterday 11:00', text: 'Confirmed dispatch record — issue shipped from 3PL on schedule. Tracking shows delivered to forwarding hub but no onward scan.' }
+    ]
+  },
+  { id: 'JCL-4465', type: 'elec', status: 'blocked', priority: 'P1',
+    subject: 'Shibboleth federation handshake failing',
+    customer: 'Max Planck Digital Library', tier: 'tier1',
+    contact: 'tech-support@mpdl.mpg.de', issn: '— (federation-wide)', journal: 'All Sage titles',
+    age: '6d 4h', breach: true, owner: 'AK',
+    desc: 'Federated authentication via Shibboleth/eduGAIN is failing with metadata signature error. All MPG affiliated researchers cannot access Sage content via institutional login. Workaround via direct IP works.',
+    fields: { 'Customer ID': 'CUST-00041', 'Subscription': 'Premier package — federation access', 'Federation': 'eduGAIN', 'Last working': '6 days ago', 'Workaround in place?': 'Yes — direct IP' },
+    suggested: { title: 'Blocked on Atypon — vendor ticket #ATY-88341', text: 'Atypon engineering investigating signing certificate rotation. ETA from vendor: 24 hours. Customer notified workaround in place.', primary: 'Update customer', secondary: 'Chase Atypon' },
+    activity: [
+      { type: 'create', who: 'tech-support@mpdl.mpg.de', when: '6 days ago', text: 'Inbound — federation auth failures.' },
+      { type: 'action', who: 'Anika Krause', when: '5 days ago', text: 'Reproduced. Raised vendor ticket <code>ATY-88341</code> with Atypon. Status: Blocked on vendor.' },
+      { type: 'note', who: 'Anika Krause', when: '2 days ago', text: 'Atypon confirmed certificate rotation issue. ETA 24 hours. Customer kept informed via daily update.' }
+    ]
+  },
+  { id: 'JCL-4463', type: 'print', status: 'new', priority: 'P3',
+    subject: 'Damaged copy received — torn cover',
+    customer: 'Dr M. Patel (individual)', tier: 'tier3',
+    contact: 'mpatel.research@gmail.com', issn: '0734-2829', journal: 'Journal of Psychoeducational Assessment',
+    age: '5h', breach: false, owner: null,
+    desc: 'Personal subscriber received Vol 43, Issue 2 with torn cover and water damage to first 20 pages. Photos attached to ticket.',
+    fields: { 'Customer ID': 'CUST-IND-44192', 'Subscription': 'Personal print', 'Affected issue': 'Vol 43, Issue 2', '3PL of record': 'OpenText / Sheridan', 'Photos provided?': 'Yes (3 attached)' },
+    suggested: { title: 'Standard reship — within tier-3 auto-approve threshold', text: 'Single damaged issue, photos provided, value within auto-approve. One-click reship will dispatch replacement next business day.', primary: 'Auto-reship replacement', secondary: 'Request more info' },
+    activity: [{ type: 'create', who: 'mpatel.research@gmail.com', when: '5 hours ago', text: 'Inbound email with 3 photo attachments.' }]
+  },
+  { id: 'JCL-4461', type: 'elec', status: 'progress', priority: 'P2',
+    subject: 'Missing entitlement — title shows as not subscribed',
+    customer: 'Stanford Libraries', tier: 'tier1',
+    contact: 'esubs@stanford.edu', issn: '1741-3737', journal: 'Journal of Marriage and Family',
+    age: '1d 8h', breach: false, owner: 'SH',
+    desc: 'Title is part of contracted package but showing as paywall to authenticated users. Subscription record confirms entitlement.',
+    fields: { 'Customer ID': 'CUST-00005', 'Subscription': 'Premier 2025 — confirmed includes title', 'Affected title ISSN': '1741-3737', 'Hosting platform': 'Atypon Literatum' },
+    suggested: { title: 'Entitlement record drift — sync from source', text: 'Subscription system shows entitlement; hosting platform does not. Trigger entitlement re-sync to resolve.', primary: 'Re-sync entitlement', secondary: 'Manual override (24h)' },
+    activity: [
+      { type: 'create', who: 'esubs@stanford.edu', when: 'Yesterday 13:15', text: 'Inbound email.' },
+      { type: 'action', who: 'Sarah Hartley', when: 'Today 08:30', text: 'Verified entitlement on subscription side. Drift confirmed.' }
+    ]
+  },
+  { id: 'JCL-4459', type: 'print', status: 'resolved', priority: 'P3',
+    subject: 'Late delivery of Vol 12 Issue 1',
+    customer: 'University of Cape Town', tier: 'tier2',
+    contact: 'serials@uct.ac.za', issn: '2056-3051', journal: 'Critical Sociology',
+    age: '4d', breach: false, owner: 'MR',
+    desc: 'Issue arrived 3 weeks late. Library accepted with note for future shipping route review.',
+    fields: { 'Customer ID': 'CUST-00822', 'Resolution': 'Acknowledged and flagged for route review', 'Closed at': 'Yesterday 16:40' },
+    suggested: null,
+    activity: [
+      { type: 'create', who: 'serials@uct.ac.za', when: '4 days ago', text: 'Inbound.' },
+      { type: 'action', who: 'Marcus Reid', when: 'Yesterday 16:40', text: 'Resolved — flagged international route for ops review.' }
+    ]
+  },
+  { id: 'JCL-4458', type: 'elec', status: 'new', priority: 'P2',
+    subject: 'OpenAthens login loop',
+    customer: 'University of Manchester', tier: 'tier1',
+    contact: 'libsupport@manchester.ac.uk', issn: '— (federation)', journal: 'All Sage titles',
+    age: '6h', breach: false, owner: null,
+    desc: 'Users authenticated via OpenAthens are redirected back to login page after successful auth. Started overnight. Affects all Sage content.',
+    fields: { 'Customer ID': 'CUST-00188', 'Federation': 'OpenAthens', 'Onset': 'Overnight' },
+    suggested: { title: 'Possibly related to JCL-4465 (Shibboleth)', text: 'Atypon vendor ticket already open for federation auth issue. Recommend linking and bundling customer comms.', primary: 'Link to JCL-4465', secondary: 'Investigate separately' },
+    activity: [{ type: 'create', who: 'libsupport@manchester.ac.uk', when: '6 hours ago', text: 'Inbound email.' }]
+  },
+  { id: 'JCL-4456', type: 'print', status: 'progress', priority: 'P3',
+    subject: 'Address change — issues going to old location',
+    customer: 'Glasgow Caledonian University', tier: 'tier2',
+    contact: 'subs@gcu.ac.uk', issn: '0263-7758', journal: 'British Journal of Visual Impairment',
+    age: '2d 5h', breach: false, owner: 'MR',
+    desc: 'Library moved September; address change submitted but two issues still went to previous location. Requesting reship and address verification.',
+    fields: { 'Customer ID': 'CUST-00334', 'New address': 'GCU Library, 70 Cowcaddens Rd, Glasgow G4 0BA', 'Old address (still in 3PL)': 'Saltoun St, Glasgow G12' },
+    suggested: { title: 'Address record out of sync with 3PL', text: 'CRM shows new address; 3PL feed has old. Push address update to OpenText and reship missed issues.', primary: 'Push address and reship', secondary: 'Reship only' },
+    activity: [
+      { type: 'create', who: 'subs@gcu.ac.uk', when: '2 days ago', text: 'Inbound.' },
+      { type: 'action', who: 'Marcus Reid', when: 'Yesterday', text: 'Confirmed CRM has new address since September. 3PL data feed not synced.' }
+    ]
+  },
+  { id: 'JCL-4454', type: 'elec', status: 'blocked', priority: 'P2',
+    subject: 'Title unavailable — content takedown query',
+    customer: 'KU Leuven', tier: 'tier1',
+    contact: 'ebrary@kuleuven.be', issn: '1945-7421', journal: 'Active Learning in Higher Education',
+    age: '8d 2h', breach: true, owner: 'AK',
+    desc: 'Specific article showing as withdrawn — library asking whether retraction notice will be issued and whether replacement article will be made available.',
+    fields: { 'Customer ID': 'CUST-00097', 'Article DOI': '10.1177/14697874231167821', 'Status': 'Withdrawn — pending editorial decision' },
+    suggested: { title: 'Awaiting editorial / legal sign-off', text: 'Editorial team finalising retraction notice. Legal review in progress. Update customer with timeline.', primary: 'Send holding response', secondary: 'Chase editorial' },
+    activity: [
+      { type: 'create', who: 'ebrary@kuleuven.be', when: '8 days ago', text: 'Inbound.' },
+      { type: 'action', who: 'Anika Krause', when: '7 days ago', text: 'Routed to editorial. Awaiting response.' }
+    ]
+  },
+  { id: 'JCL-4452', type: 'print', status: 'new', priority: 'P3',
+    subject: 'Duplicate issue received',
+    customer: 'McGill University', tier: 'tier2',
+    contact: 'serials.lib@mcgill.ca', issn: '0741-9325', journal: 'Remedial and Special Education',
+    age: '12h', breach: false, owner: null,
+    desc: 'Library received two copies of Vol 46, Issue 1. Asking whether to return one or whether it is a duplicate dispatch issue worth investigating.',
+    fields: { 'Customer ID': 'CUST-00256', 'Affected issue': 'Vol 46, Issue 1' },
+    suggested: { title: 'Likely 3PL dispatch glitch', text: 'Subscription record shows single copy. Check 3PL dispatch log — if duplicate ship logged, request library keep both, no further action.', primary: 'Check 3PL log', secondary: 'Request return' },
+    activity: [{ type: 'create', who: 'serials.lib@mcgill.ca', when: '12 hours ago', text: 'Inbound.' }]
+  },
+  { id: 'JCL-4450', type: 'elec', status: 'resolved', priority: 'P2',
+    subject: 'COUNTER report missing data for Q4',
+    customer: 'Australian National University', tier: 'tier1',
+    contact: 'erm@anu.edu.au', issn: '— (reporting)', journal: 'COUNTER 5 report',
+    age: '3d', breach: false, owner: 'SH',
+    desc: 'COUNTER 5 TR_J1 report for Q4 2024 shows zero usage for December despite confirmed access. Need corrected report for budget submission.',
+    fields: { 'Customer ID': 'CUST-00171', 'Report': 'TR_J1 Q4 2024', 'Resolution': 'Regenerated — sent corrected report', 'Closed at': '2 days ago' },
+    suggested: null,
+    activity: [
+      { type: 'create', who: 'erm@anu.edu.au', when: '3 days ago', text: 'Inbound.' },
+      { type: 'action', who: 'Sarah Hartley', when: '2 days ago', text: 'Identified data pipeline gap for December. Regenerated report from raw logs. Sent to customer with note.' }
+    ]
+  }
+];
+
+let claims = [];
+let state = {
+  view: 'all', selectedId: null, search: '',
+  activeChip: 'status:all', selected: new Set()
+};
+
+const loadClaims = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(DEFAULT_CLAIMS));
+};
+const saveClaims = () => {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(claims)); } catch (e) {}
+};
+const resetClaims = () => {
+  claims = JSON.parse(JSON.stringify(DEFAULT_CLAIMS));
+  state.selectedId = null;
+  state.selected.clear();
+  saveClaims();
+  renderAll();
+  showToast('Data reset to defaults');
+};
+
+claims = loadClaims();
+
+// ═══════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════
+const escapeAttr = s => String(s).replace(/"/g, '&quot;');
+const escapeHtml = s => String(s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+const statusLabels = { new: 'New', progress: 'In progress', blocked: 'Blocked', resolved: 'Resolved' };
+const statusClasses = { new: 'pill-new', progress: 'pill-progress', blocked: 'pill-blocked', resolved: 'pill-resolved' };
+const priorityOptions = ['P1', 'P2', 'P3'];
+const statusOptions = ['new', 'progress', 'blocked', 'resolved'];
+
+const handlerName = (initials) => {
+  if (!initials) return 'unassigned';
+  const h = HANDLERS.find(x => x.initials === initials);
+  return h ? h.name : initials;
+};
+
+const nextClaimId = () => {
+  const nums = claims
+    .map(c => parseInt((c.id || '').replace(/\D/g, ''), 10))
+    .filter(n => !isNaN(n));
+  const max = nums.length ? Math.max(...nums) : 4471;
+  return `JCL-${max + 1}`;
+};
+
+const nowLabel = () => {
+  const d = new Date();
+  return d.toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' });
+};
+
+const addActivity = (claim, type, who, text) => {
+  if (!claim.activity) claim.activity = [];
+  claim.activity.unshift({ type, who, when: nowLabel(), text });
+};
+
+// ═══════════════════════════════════════════════
+// FILTER
+// ═══════════════════════════════════════════════
+const filterClaims = () => {
+  let list = claims.slice();
+  if (state.view === 'mine')      list = list.filter(c => c.owner === ME);
+  if (state.view === 'breach')    list = list.filter(c => c.breach);
+  if (state.view === 'unassigned')list = list.filter(c => !c.owner);
+  if (state.view === 'print')     list = list.filter(c => c.type === 'print');
+  if (state.view === 'elec')      list = list.filter(c => c.type === 'elec');
+  if (state.activeChip.startsWith('status:') && state.activeChip !== 'status:all') {
+    list = list.filter(c => c.status === state.activeChip.split(':')[1]);
+  }
+  if (state.activeChip === 'pri:p1')      list = list.filter(c => c.priority === 'P1');
+  if (state.activeChip === 'cust:tier1')  list = list.filter(c => c.tier === 'tier1');
+  if (state.search) {
+    const q = state.search.toLowerCase();
+    list = list.filter(c =>
+      c.id.toLowerCase().includes(q) ||
+      c.subject.toLowerCase().includes(q) ||
+      c.customer.toLowerCase().includes(q) ||
+      (c.issn || '').toLowerCase().includes(q)
+    );
+  }
+  return list;
+};
+
+// ═══════════════════════════════════════════════
+// RENDER: QUEUE
+// ═══════════════════════════════════════════════
+const renderQueue = () => {
+  const list = filterClaims();
+  const el = document.getElementById('queue-list');
+  if (list.length === 0) {
+    el.innerHTML = `<div style="padding:48px 20px; text-align:center; color: var(--ink-muted); font-size:13px;">No claims match the current filters.</div>`;
+    return;
+  }
+  el.innerHTML = list.map(c => {
+    const statusLabel = statusLabels[c.status];
+    const statusClass = statusClasses[c.status];
+    const ariaLabel = `Claim ${c.id}, ${c.type === 'print' ? 'print' : 'electronic'}, ${c.subject}, customer ${c.customer}, ${statusLabel}, age ${c.age}${c.breach ? ', SLA breach' : ''}, priority ${c.priority}, owner ${c.owner ? handlerName(c.owner) : 'unassigned'}`;
+    const checked = state.selected.has(c.id) ? 'checked' : '';
+    return `
+    <div class="queue-row" role="row" data-id="${c.id}" aria-selected="${state.selectedId === c.id}">
+      <span role="cell" class="row-checkbox">
+        <input type="checkbox" data-row-checkbox="${c.id}" ${checked} aria-label="Select ${c.id}" />
+      </span>
+      <span role="cell" class="qcol-id claim-id"><button class="row-open" data-id="${c.id}" aria-label="${escapeAttr(ariaLabel)}" style="background:transparent;border:0;font:inherit;color:inherit;padding:0;cursor:pointer;text-align:left;">${c.id}</button></span>
+      <span role="cell" class="qcol-type"><span class="type-badge ${c.type}" aria-label="${c.type === 'print' ? 'Print fulfilment' : 'Electronic access'}">${c.type === 'print' ? 'PR' : 'EL'}</span></span>
+      <span role="cell" class="qcol-subj">
+        <button class="row-open" data-id="${c.id}" aria-label="Open ${c.id}" style="background:transparent;border:0;font:inherit;color:inherit;padding:0;cursor:pointer;text-align:left;width:100%;">
+          <span class="claim-subj">${escapeHtml(c.subject)}</span>
+          <span class="claim-meta">${escapeHtml(c.customer)}${c.issn && !c.issn.startsWith('—') ? ' · ISSN ' + c.issn : ''}</span>
+          <span class="mobile-meta">
+            <span class="pill ${statusClass}">${statusLabel}</span>
+            <span class="age ${c.breach ? 'breach' : ''}">${c.age}${c.breach ? ' ⚠' : ''}</span>
+            <span class="pri pri-${c.priority.toLowerCase()}">${c.priority}</span>
+          </span>
+        </button>
+      </span>
+      <span role="cell" class="qcol-status"><span class="pill ${statusClass}">${statusLabel}</span></span>
+      <span role="cell" class="qcol-age age ${c.breach ? 'breach' : ''}">${c.age}${c.breach ? ' ⚠' : ''}</span>
+      <span role="cell" class="qcol-pri pri pri-${c.priority.toLowerCase()}">${c.priority}</span>
+      <span role="cell" class="qcol-owner">
+        ${c.owner
+          ? `<span class="owner-badge" aria-label="Assigned to ${handlerName(c.owner)}" title="${handlerName(c.owner)}">${c.owner}</span>`
+          : `<span class="owner-badge unassigned" aria-label="Unassigned">?</span>`}
+      </span>
+    </div>`;
+  }).join('');
+
+  // Selection checkboxes
+  el.querySelectorAll('[data-row-checkbox]').forEach(cb => {
+    cb.addEventListener('click', e => e.stopPropagation());
+    cb.addEventListener('change', e => {
+      const id = e.target.dataset.rowCheckbox;
+      if (e.target.checked) state.selected.add(id);
+      else state.selected.delete(id);
+      updateSelectionUI();
+    });
+  });
+
+  // Row clicks (open detail)
+  el.querySelectorAll('.row-open').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      state.selectedId = btn.dataset.id;
+      renderQueue();
+      renderDetail();
+      setTimeout(() => document.querySelector('.detail-head h2')?.focus?.(), 0);
+    });
+  });
+
+  // Whole row click (also opens)
+  el.querySelectorAll('.queue-row').forEach(row => {
+    row.addEventListener('click', e => {
+      // Don't open if click was on checkbox
+      if (e.target.closest('.row-checkbox')) return;
+      state.selectedId = row.dataset.id;
+      renderQueue();
+      renderDetail();
+      setTimeout(() => document.querySelector('.detail-head h2')?.focus?.(), 0);
+    });
+  });
+};
+
+const updateSelectionUI = () => {
+  const info = document.getElementById('selection-info');
+  const count = state.selected.size;
+  if (count > 0) {
+    info.hidden = false;
+    document.getElementById('selection-count').textContent = `${count} selected`;
+  } else {
+    info.hidden = true;
+  }
+};
+
+// ═══════════════════════════════════════════════
+// RENDER: DETAIL
+// ═══════════════════════════════════════════════
+const renderDetail = () => {
+  const el = document.getElementById('detail');
+  const c = claims.find(x => x.id === state.selectedId);
+  if (!c) {
+    el.innerHTML = `<div class="detail-empty">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 10h6M9 14h4"/>
+      </svg>
+      <p>Select a claim from the queue to view details, customer information, and suggested actions.</p>
+    </div>`;
+    return;
+  }
+
+  const statusLabel = statusLabels[c.status];
+  const statusClass = statusClasses[c.status];
+
+  const fieldsHtml = Object.entries(c.fields || {}).map(([k, v]) => `
+    <dt>${escapeHtml(k)}</dt>
+    <dd><span class="editable" data-field-key="${escapeAttr(k)}">${(typeof v === 'string' && (v.startsWith('CUST-') || v.startsWith('ART-') || v.startsWith('10.'))) ? `<code>${escapeHtml(v)}</code>` : escapeHtml(v)}</span></dd>
+  `).join('');
+
+  const suggestedHtml = c.suggested && c.status !== 'resolved' ? `
+    <div class="suggested" role="region" aria-label="Suggested action">
+      <p class="suggested-label">Suggested action</p>
+      <h4>${escapeHtml(c.suggested.title)}</h4>
+      <p>${escapeHtml(c.suggested.text)}</p>
+      <div class="suggested-actions">
+        <button class="btn btn-primary btn-sm" data-act="primary">${escapeHtml(c.suggested.primary)}</button>
+        <button class="btn btn-sm" data-act="secondary">${escapeHtml(c.suggested.secondary)}</button>
+      </div>
+    </div>` : '';
+
+  const ownerOptions = HANDLERS.map(h =>
+    `<option value="${h.initials}" ${c.owner === h.initials ? 'selected' : ''}>${h.initials} — ${h.name}</option>`
+  ).join('');
+
+  const actionsAccordionHtml = c.status === 'resolved' ? '' : `
+    <div class="accordion-item">
+      <h3 style="margin:0;">
+        <button class="accordion-header" aria-expanded="true" aria-controls="acc-actions">
+          Quick actions
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+      </h3>
+      <div class="accordion-panel" id="acc-actions" data-state="open">
+        <div class="actions-grid">
+          ${c.type === 'print' ? `
+            <button class="action-tile" data-act="reship">
+              <span class="action-tile-title">Reship issue</span>
+              <span class="action-tile-sub">Trigger replacement via 3PL</span>
+            </button>
+            <button class="action-tile" data-act="refund">
+              <span class="action-tile-title">Issue credit or refund</span>
+              <span class="action-tile-sub">Within tier policy limits</span>
+            </button>
+            <button class="action-tile" data-act="3pl-flag">
+              <span class="action-tile-title">Flag for 3PL audit</span>
+              <span class="action-tile-sub">Add to weekly vendor review</span>
+            </button>
+          ` : `
+            <button class="action-tile" data-act="restore-ip">
+              <span class="action-tile-title">Restore IP entitlement</span>
+              <span class="action-tile-sub">Push from subscription system</span>
+            </button>
+            <button class="action-tile" data-act="resync">
+              <span class="action-tile-title">Re-sync entitlement</span>
+              <span class="action-tile-sub">Force re-publish to platform</span>
+            </button>
+            <button class="action-tile" data-act="vendor">
+              <span class="action-tile-title">Escalate to vendor</span>
+              <span class="action-tile-sub">Atypon or hosting platform</span>
+            </button>
+          `}
+          <button class="action-tile" data-act="email">
+            <span class="action-tile-title">Send update to customer</span>
+            <span class="action-tile-sub">Compose templated email</span>
+          </button>
+        </div>
+      </div>
+    </div>`;
+
+  el.innerHTML = `
+    <header class="detail-head">
+      <p class="detail-id">${c.id}  ·  ${c.type === 'print' ? 'Print fulfilment' : 'Electronic access'}</p>
+      <h2 class="detail-title" tabindex="-1">${escapeHtml(c.subject)}</h2>
+      <div class="detail-meta">
+        <span class="pill ${statusClass}">${statusLabel}</span>
+        <span class="pill pill-neutral">Priority ${c.priority}</span>
+        <span class="pill pill-neutral">Age ${c.age}${c.breach ? ' · SLA breach' : ''}</span>
+        <span class="pill pill-neutral">${c.tier === 'tier1' ? 'Tier-1 customer' : c.tier === 'tier2' ? 'Tier-2' : 'Tier-3'}</span>
+      </div>
+
+      <div class="detail-controls">
+        <div class="control-row">
+          <label for="ctrl-status">Status</label>
+          <select class="select" id="ctrl-status" aria-label="Change status">
+            ${statusOptions.map(s => `<option value="${s}" ${c.status === s ? 'selected' : ''}>${statusLabels[s]}</option>`).join('')}
+          </select>
+        </div>
+        <div class="control-row">
+          <label for="ctrl-owner">Owner</label>
+          <select class="select" id="ctrl-owner" aria-label="Change owner">
+            <option value="">Unassigned</option>
+            ${ownerOptions}
+          </select>
+        </div>
+        <div class="control-row">
+          <label for="ctrl-priority">Priority</label>
+          <select class="select" id="ctrl-priority" aria-label="Change priority">
+            ${priorityOptions.map(p => `<option value="${p}" ${c.priority === p ? 'selected' : ''}>${p}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </header>
+
+    ${suggestedHtml}
+
+    <div class="accordion" role="region" aria-label="Claim details">
+      <div class="accordion-item">
+        <h3 style="margin:0;">
+          <button class="accordion-header" aria-expanded="true" aria-controls="acc-desc">
+            Description
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+        </h3>
+        <div class="accordion-panel" id="acc-desc" data-state="open">
+          <p class="desc">${escapeHtml(c.desc)}</p>
+        </div>
+      </div>
+
+      <div class="accordion-item">
+        <h3 style="margin:0;">
+          <button class="accordion-header" aria-expanded="true" aria-controls="acc-customer">
+            Customer
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+        </h3>
+        <div class="accordion-panel" id="acc-customer" data-state="open">
+          <p class="customer-name">${escapeHtml(c.customer)}</p>
+          <p class="customer-meta">${escapeHtml(c.contact)}${c.journal ? ' · ' + escapeHtml(c.journal) : ''}</p>
+          <dl class="kv">${fieldsHtml}</dl>
+          <p class="help" style="font-size:11.5px; color:var(--ink-muted); margin-top:10px;">Click any value above to edit.</p>
+        </div>
+      </div>
+
+      ${actionsAccordionHtml}
+
+      <div class="accordion-item">
+        <h3 style="margin:0;">
+          <button class="accordion-header" aria-expanded="true" aria-controls="acc-activity">
+            Activity (${(c.activity || []).length})
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+        </h3>
+        <div class="accordion-panel" id="acc-activity" data-state="open">
+          <ul class="activity">
+            ${(c.activity || []).map(a => `
+              <li>
+                <span class="act-dot ${a.type}" aria-hidden="true"></span>
+                <div>
+                  <div class="act-text"><strong>${escapeHtml(a.who)}</strong></div>
+                  <div class="act-time">${escapeHtml(a.when)}</div>
+                  <div class="act-body${a.type === 'email' ? ' email' : ''}">${a.text}</div>
+                </div>
+              </li>
+            `).join('')}
+          </ul>
+
+          ${c.status !== 'resolved' ? `
+            <form class="note-form" id="note-form">
+              <label for="note-input" class="sr-only">Add a note</label>
+              <textarea id="note-input" placeholder="Add a note to the activity log…"></textarea>
+              <div class="note-actions">
+                <button type="submit" class="btn btn-sm btn-primary">Add note</button>
+              </div>
+            </form>
+          ` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+
+  // ── Wire up controls ──
+  document.getElementById('ctrl-status').addEventListener('change', e => {
+    const old = c.status;
+    c.status = e.target.value;
+    addActivity(c, 'action', handlerName(ME), `Status changed from <strong>${statusLabels[old]}</strong> to <strong>${statusLabels[c.status]}</strong>.`);
+    saveClaims(); renderAll();
+    showToast(`Status updated to "${statusLabels[c.status]}"`);
+  });
+  document.getElementById('ctrl-owner').addEventListener('change', e => {
+    const old = c.owner;
+    c.owner = e.target.value || null;
+    const oldName = old ? handlerName(old) : 'Unassigned';
+    const newName = c.owner ? handlerName(c.owner) : 'Unassigned';
+    addActivity(c, 'action', handlerName(ME), `Owner changed from <strong>${oldName}</strong> to <strong>${newName}</strong>.`);
+    saveClaims(); renderAll();
+    showToast(`Reassigned to ${newName}`);
+  });
+  document.getElementById('ctrl-priority').addEventListener('change', e => {
+    const old = c.priority;
+    c.priority = e.target.value;
+    addActivity(c, 'action', handlerName(ME), `Priority changed from <strong>${old}</strong> to <strong>${c.priority}</strong>.`);
+    saveClaims(); renderAll();
+    showToast(`Priority set to ${c.priority}`);
+  });
+
+  // Accordion toggle
+  el.querySelectorAll('.accordion-header').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const expanded = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!expanded));
+      const panel = document.getElementById(btn.getAttribute('aria-controls'));
+      panel.setAttribute('data-state', expanded ? 'closed' : 'open');
+    });
+  });
+
+  // Editable customer fields
+  el.querySelectorAll('.editable').forEach(span => {
+    span.addEventListener('click', () => {
+      const key = span.dataset.fieldKey;
+      const currentValue = c.fields[key];
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = currentValue;
+      input.setAttribute('aria-label', `Edit ${key}`);
+      span.replaceWith(input);
+      input.focus();
+      input.select();
+      const commit = () => {
+        const newVal = input.value.trim();
+        if (newVal && newVal !== currentValue) {
+          c.fields[key] = newVal;
+          addActivity(c, 'note', handlerName(ME), `Updated <strong>${key}</strong>: "${currentValue}" → "${newVal}".`);
+          saveClaims(); renderDetail();
+          showToast(`${key} updated`);
+        } else {
+          renderDetail();
+        }
+      };
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { renderDetail(); }
+      });
+    });
+  });
+
+  // Suggested + quick actions
+  el.querySelectorAll('[data-act]').forEach(b => {
+    b.addEventListener('click', () => {
+      const act = b.dataset.act;
+      handleAction(c, act);
+    });
+  });
+
+  // Note form
+  const noteForm = document.getElementById('note-form');
+  if (noteForm) {
+    noteForm.addEventListener('submit', e => {
+      e.preventDefault();
+      const text = document.getElementById('note-input').value.trim();
+      if (!text) return;
+      addActivity(c, 'note', handlerName(ME), escapeHtml(text));
+      saveClaims(); renderDetail();
+      showToast('Note added');
+    });
+  }
+};
+
+// ═══════════════════════════════════════════════
+// ACTIONS
+// ═══════════════════════════════════════════════
+const handleAction = (c, act) => {
+  if (act === 'primary' && c.suggested) {
+    addActivity(c, 'action', handlerName(ME), `Triggered suggested action: <strong>${escapeHtml(c.suggested.primary)}</strong>. Customer notified.`);
+    if (c.status === 'new') c.status = 'progress';
+    saveClaims(); renderAll();
+    showToast(`"${c.suggested.primary}" triggered`);
+    return;
+  }
+  if (act === 'secondary' && c.suggested) {
+    addActivity(c, 'action', handlerName(ME), `Selected alternative action: <strong>${escapeHtml(c.suggested.secondary)}</strong>.`);
+    saveClaims(); renderAll();
+    showToast(`"${c.suggested.secondary}" logged`);
+    return;
+  }
+  if (act === 'email') {
+    openEmailModal(c);
+    return;
+  }
+  const labels = {
+    reship: 'Reship raised with 3PL — ETA next business day',
+    refund: 'Credit/refund request submitted',
+    '3pl-flag': 'Flagged for 3PL vendor review',
+    'restore-ip': 'IP entitlement restore queued',
+    resync: 'Entitlement re-sync triggered',
+    vendor: 'Vendor escalation ticket drafted'
+  };
+  if (labels[act]) {
+    addActivity(c, 'action', handlerName(ME), labels[act] + '.');
+    if (c.status === 'new') c.status = 'progress';
+    saveClaims(); renderAll();
+    showToast(labels[act]);
+  }
+};
+
+// ═══════════════════════════════════════════════
+// MODAL — generic
+// ═══════════════════════════════════════════════
+const modalBackdrop = document.getElementById('modal-backdrop');
+const modalTitle = document.getElementById('modal-title');
+const modalBody = document.getElementById('modal-body');
+const modalFooter = document.getElementById('modal-footer');
+
+let lastFocused = null;
+
+const openModal = ({ title, body, footer }) => {
+  lastFocused = document.activeElement;
+  modalTitle.textContent = title;
+  modalBody.innerHTML = body;
+  modalFooter.innerHTML = footer;
+  modalBackdrop.classList.add('show');
+  modalBackdrop.setAttribute('aria-hidden', 'false');
+  setTimeout(() => {
+    const first = modalBody.querySelector('input, select, textarea, button');
+    if (first) first.focus();
+  }, 50);
+};
+const closeModal = () => {
+  modalBackdrop.classList.remove('show');
+  modalBackdrop.setAttribute('aria-hidden', 'true');
+  if (lastFocused) lastFocused.focus();
+};
+document.getElementById('modal-close').addEventListener('click', closeModal);
+modalBackdrop.addEventListener('click', e => { if (e.target === modalBackdrop) closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && modalBackdrop.classList.contains('show')) closeModal();
+});
+
+// ═══════════════════════════════════════════════
+// NEW CLAIM modal
+// ═══════════════════════════════════════════════
+const openNewClaimModal = () => {
+  openModal({
+    title: 'New claim',
+    body: `
+      <form id="new-claim-form">
+        <div class="field-row">
+          <div class="field">
+            <label for="nc-type">Type<span class="req">*</span></label>
+            <select id="nc-type" required>
+              <option value="elec">Electronic access</option>
+              <option value="print">Print fulfilment</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="nc-priority">Priority<span class="req">*</span></label>
+            <select id="nc-priority" required>
+              <option value="P3">P3</option>
+              <option value="P2" selected>P2</option>
+              <option value="P1">P1</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="nc-subject">Subject<span class="req">*</span></label>
+          <input id="nc-subject" type="text" required placeholder="Short description of the issue" />
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="nc-customer">Customer<span class="req">*</span></label>
+            <input id="nc-customer" type="text" required placeholder="Library / institution name" />
+          </div>
+          <div class="field">
+            <label for="nc-tier">Customer tier</label>
+            <select id="nc-tier">
+              <option value="tier1">Tier 1</option>
+              <option value="tier2" selected>Tier 2</option>
+              <option value="tier3">Tier 3</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="nc-contact">Contact email</label>
+            <input id="nc-contact" type="email" placeholder="contact@library.org" />
+          </div>
+          <div class="field">
+            <label for="nc-issn">ISSN / Journal</label>
+            <input id="nc-issn" type="text" placeholder="0000-0000" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="nc-desc">Description<span class="req">*</span></label>
+          <textarea id="nc-desc" required placeholder="What is the customer reporting?"></textarea>
+        </div>
+        <div class="field">
+          <label for="nc-owner">Assign to</label>
+          <select id="nc-owner">
+            <option value="">Unassigned</option>
+            ${HANDLERS.map(h => `<option value="${h.initials}" ${h.initials === ME ? 'selected' : ''}>${h.initials} — ${h.name}</option>`).join('')}
+          </select>
+        </div>
+      </form>
+    `,
+    footer: `
+      <button class="btn" id="cancel-new">Cancel</button>
+      <button class="btn btn-primary" id="submit-new">Create claim</button>
+    `
+  });
+
+  document.getElementById('cancel-new').addEventListener('click', closeModal);
+  document.getElementById('submit-new').addEventListener('click', () => {
+    const form = document.getElementById('new-claim-form');
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+    const newClaim = {
+      id: nextClaimId(),
+      type: document.getElementById('nc-type').value,
+      status: 'new',
+      priority: document.getElementById('nc-priority').value,
+      subject: document.getElementById('nc-subject').value.trim(),
+      customer: document.getElementById('nc-customer').value.trim(),
+      tier: document.getElementById('nc-tier').value,
+      contact: document.getElementById('nc-contact').value.trim(),
+      issn: document.getElementById('nc-issn').value.trim() || '—',
+      journal: document.getElementById('nc-issn').value.trim() || '—',
+      age: 'just now',
+      breach: false,
+      owner: document.getElementById('nc-owner').value || null,
+      desc: document.getElementById('nc-desc').value.trim(),
+      fields: { 'Customer ID': 'CUST-NEW', 'Subscription': 'To verify' },
+      suggested: null,
+      activity: [
+        { type: 'create', who: handlerName(ME), when: nowLabel(), text: 'Claim created manually via console.' }
+      ]
+    };
+    claims.unshift(newClaim);
+    state.selectedId = newClaim.id;
+    saveClaims();
+    closeModal();
+    renderAll();
+    showToast(`Claim ${newClaim.id} created`);
+  });
+};
+document.getElementById('btn-new-claim').addEventListener('click', openNewClaimModal);
+
+// ═══════════════════════════════════════════════
+// EMAIL modal
+// ═══════════════════════════════════════════════
+const openEmailModal = (c) => {
+  const templates = {
+    acknowledgement: {
+      label: 'Acknowledgement',
+      subject: `RE: ${c.subject} [${c.id}]`,
+      body: `Dear ${c.customer.split(' ')[0]} team,\n\nThank you for getting in touch about ${c.subject.toLowerCase()}.\n\nWe have logged your claim with reference ${c.id} and our team is investigating. We will be in touch with an update within 24 hours.\n\nBest regards,\n${handlerName(ME)}\nSage Customer Service`
+    },
+    update: {
+      label: 'Status update',
+      subject: `Update on ${c.id}: ${c.subject}`,
+      body: `Dear ${c.customer.split(' ')[0]} team,\n\nA quick update on claim ${c.id}.\n\n[Add your update here]\n\nWe will continue to keep you informed.\n\nBest regards,\n${handlerName(ME)}\nSage Customer Service`
+    },
+    resolution: {
+      label: 'Resolution',
+      subject: `${c.id} resolved: ${c.subject}`,
+      body: `Dear ${c.customer.split(' ')[0]} team,\n\nWe are writing to confirm that claim ${c.id} has now been resolved.\n\n[Briefly describe what was done]\n\nIf you experience any further issues, please reply to this email and reference the claim ID.\n\nBest regards,\n${handlerName(ME)}\nSage Customer Service`
+    }
+  };
+
+  openModal({
+    title: `Email customer — ${c.id}`,
+    body: `
+      <div class="field">
+        <label for="em-template">Template</label>
+        <select id="em-template">
+          ${Object.entries(templates).map(([k, t]) => `<option value="${k}">${t.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label for="em-to">To</label>
+        <input id="em-to" type="text" value="${escapeAttr(c.contact)}" />
+      </div>
+      <div class="field">
+        <label for="em-subject">Subject</label>
+        <input id="em-subject" type="text" value="${escapeAttr(templates.acknowledgement.subject)}" />
+      </div>
+      <div class="field">
+        <label for="em-body">Body</label>
+        <textarea id="em-body" style="min-height:200px;">${escapeHtml(templates.acknowledgement.body)}</textarea>
+      </div>
+    `,
+    footer: `
+      <button class="btn" id="cancel-email">Cancel</button>
+      <button class="btn btn-primary" id="send-email">Send email</button>
+    `
+  });
+
+  document.getElementById('em-template').addEventListener('change', e => {
+    const t = templates[e.target.value];
+    document.getElementById('em-subject').value = t.subject;
+    document.getElementById('em-body').value = t.body;
+  });
+  document.getElementById('cancel-email').addEventListener('click', closeModal);
+  document.getElementById('send-email').addEventListener('click', () => {
+    const to = document.getElementById('em-to').value;
+    const subject = document.getElementById('em-subject').value;
+    const body = document.getElementById('em-body').value;
+    addActivity(c, 'email', handlerName(ME),
+      `Email sent to <strong>${escapeHtml(to)}</strong><br>Subject: <em>${escapeHtml(subject)}</em><br><br>${escapeHtml(body).replace(/\n/g, '<br>')}`);
+    saveClaims();
+    closeModal();
+    renderDetail();
+    showToast('Email sent and logged to activity');
+  });
+};
+
+// ═══════════════════════════════════════════════
+// BULK actions
+// ═══════════════════════════════════════════════
+document.getElementById('bulk-clear').addEventListener('click', () => {
+  state.selected.clear();
+  renderQueue();
+  updateSelectionUI();
+});
+
+document.getElementById('bulk-assign').addEventListener('click', () => {
+  openModal({
+    title: `Assign ${state.selected.size} claim${state.selected.size === 1 ? '' : 's'}`,
+    body: `
+      <div class="field">
+        <label for="ba-owner">Assign to</label>
+        <select id="ba-owner">
+          <option value="">Unassigned</option>
+          ${HANDLERS.map(h => `<option value="${h.initials}">${h.initials} — ${h.name}</option>`).join('')}
+        </select>
+      </div>
+    `,
+    footer: `
+      <button class="btn" id="cancel-bulk">Cancel</button>
+      <button class="btn btn-primary" id="apply-bulk-assign">Apply</button>
+    `
+  });
+  document.getElementById('cancel-bulk').addEventListener('click', closeModal);
+  document.getElementById('apply-bulk-assign').addEventListener('click', () => {
+    const newOwner = document.getElementById('ba-owner').value || null;
+    const newName = newOwner ? handlerName(newOwner) : 'Unassigned';
+    let count = 0;
+    state.selected.forEach(id => {
+      const c = claims.find(x => x.id === id);
+      if (c) {
+        c.owner = newOwner;
+        addActivity(c, 'action', handlerName(ME), `Bulk reassigned to <strong>${newName}</strong>.`);
+        count++;
+      }
+    });
+    saveClaims();
+    state.selected.clear();
+    closeModal();
+    renderAll();
+    showToast(`${count} claim${count === 1 ? '' : 's'} assigned to ${newName}`);
+  });
+});
+
+document.getElementById('bulk-status').addEventListener('click', () => {
+  openModal({
+    title: `Set status on ${state.selected.size} claim${state.selected.size === 1 ? '' : 's'}`,
+    body: `
+      <div class="field">
+        <label for="bs-status">New status</label>
+        <select id="bs-status">
+          ${statusOptions.map(s => `<option value="${s}">${statusLabels[s]}</option>`).join('')}
+        </select>
+      </div>
+    `,
+    footer: `
+      <button class="btn" id="cancel-bulk2">Cancel</button>
+      <button class="btn btn-primary" id="apply-bulk-status">Apply</button>
+    `
+  });
+  document.getElementById('cancel-bulk2').addEventListener('click', closeModal);
+  document.getElementById('apply-bulk-status').addEventListener('click', () => {
+    const newStatus = document.getElementById('bs-status').value;
+    let count = 0;
+    state.selected.forEach(id => {
+      const c = claims.find(x => x.id === id);
+      if (c) {
+        const old = c.status;
+        c.status = newStatus;
+        addActivity(c, 'action', handlerName(ME), `Bulk status change: <strong>${statusLabels[old]}</strong> → <strong>${statusLabels[newStatus]}</strong>.`);
+        count++;
+      }
+    });
+    saveClaims();
+    state.selected.clear();
+    closeModal();
+    renderAll();
+    showToast(`${count} claim${count === 1 ? '' : 's'} updated`);
+  });
+});
+
+// Select-all checkbox
+document.getElementById('select-all').addEventListener('change', e => {
+  const list = filterClaims();
+  if (e.target.checked) {
+    list.forEach(c => state.selected.add(c.id));
+  } else {
+    list.forEach(c => state.selected.delete(c.id));
+  }
+  renderQueue();
+  updateSelectionUI();
+});
+
+// ═══════════════════════════════════════════════
+// EXPORT
+// ═══════════════════════════════════════════════
+document.getElementById('btn-export').addEventListener('click', () => {
+  const list = filterClaims();
+  const headers = ['ID', 'Type', 'Status', 'Priority', 'Subject', 'Customer', 'Tier', 'Owner', 'Age', 'Breach'];
+  const rows = list.map(c => [
+    c.id, c.type, c.status, c.priority,
+    `"${(c.subject || '').replace(/"/g, '""')}"`,
+    `"${(c.customer || '').replace(/"/g, '""')}"`,
+    c.tier, c.owner || '', c.age, c.breach ? 'Yes' : 'No'
+  ]);
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `claims-export-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`Exported ${list.length} claims to CSV`);
+});
+
+// ═══════════════════════════════════════════════
+// COUNTS / KPIs
+// ═══════════════════════════════════════════════
+const renderCounts = () => {
+  document.getElementById('count-all').textContent     = claims.filter(c => c.status !== 'resolved').length;
+  document.getElementById('count-mine').textContent    = claims.filter(c => c.owner === ME && c.status !== 'resolved').length;
+  document.getElementById('count-breach').textContent  = claims.filter(c => c.breach).length;
+  document.getElementById('count-un').textContent      = claims.filter(c => !c.owner && c.status !== 'resolved').length;
+  document.getElementById('count-print').textContent   = claims.filter(c => c.type === 'print' && c.status !== 'resolved').length;
+  document.getElementById('count-elec').textContent    = claims.filter(c => c.type === 'elec' && c.status !== 'resolved').length;
+  document.getElementById('kpi-open').textContent      = claims.filter(c => c.status !== 'resolved').length;
+  document.getElementById('kpi-risk').textContent      = claims.filter(c => c.breach || c.priority === 'P1').length;
+};
+
+const showToast = (msg) => {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), 2400);
+};
+
+const renderAll = () => {
+  renderCounts();
+  renderQueue();
+  if (state.selectedId && claims.find(c => c.id === state.selectedId)) {
+    renderDetail();
+  } else {
+    state.selectedId = null;
+    renderDetail();
+  }
+  updateSelectionUI();
+};
+
+// ═══════════════════════════════════════════════
+// WIRING
+// ═══════════════════════════════════════════════
+document.querySelectorAll('[aria-label="Primary"] a').forEach(n => {
+  n.addEventListener('click', e => {
+    e.preventDefault();
+    document.querySelectorAll('[aria-label="Primary"] a').forEach(x => x.removeAttribute('aria-current'));
+    n.setAttribute('aria-current', 'page');
+    state.view = n.dataset.view;
+    state.selectedId = null;
+    renderAll();
+  });
+});
+document.querySelectorAll('.chip').forEach(c => {
+  c.addEventListener('click', () => {
+    document.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', 'false'));
+    c.setAttribute('aria-pressed', 'true');
+    state.activeChip = c.dataset.filter;
+    renderQueue();
+  });
+});
+document.getElementById('global-search').addEventListener('input', e => {
+  state.search = e.target.value;
+  renderQueue();
+});
+document.getElementById('toggle-annotations').addEventListener('change', e => {
+  document.body.classList.toggle('show-annotations', e.target.checked);
+});
+document.getElementById('reset-data').addEventListener('click', () => {
+  if (confirm('Reset all claims to defaults? Your changes will be lost.')) {
+    resetClaims();
+  }
+});
+
+// Initial render
+renderAll();
+setTimeout(() => {
+  if (!state.selectedId && claims.length > 0) {
+    state.selectedId = claims[0].id;
+    renderAll();
+  }
+}, 100);
+</script>
+</body>
+</html>
