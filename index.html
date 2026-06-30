@@ -568,6 +568,29 @@
   .mgr-tabs a:hover{ color:var(--navy); background:var(--navy-100) }
   .mgr-tabs a.is-active{ color:var(--navy); border-bottom-color:var(--navy) }
 
+  /* Bulk-action bar (Approvals pending) */
+  .bulk-bar{
+    display:flex; align-items:center; gap:1rem; flex-wrap:wrap;
+    padding:.6rem .85rem; margin-bottom:.75rem;
+    background:var(--navy-100); border:1px solid var(--line);
+    border-radius:var(--radius);
+  }
+  .bulk-check{
+    display:inline-flex; align-items:center; gap:.45rem;
+    font-family:-apple-system,Segoe UI,sans-serif; font-weight:600; font-size:.9rem; color:var(--navy);
+  }
+  .bulk-bar .btn{ margin-left:auto }
+  .bulk-bar input[type=checkbox], .claims-table .bulk-row, #bulk-all{
+    width:1.15rem; height:1.15rem; accent-color:var(--navy);
+  }
+  .col-check{ width:2.5rem; text-align:center }
+  @media (max-width:720px){
+    .bulk-bar .btn{ margin-left:0 }
+    .claims-table td.col-check{ position:absolute; top:.6rem; right:.6rem; padding:0 }
+    .claims-table td.col-check::before{ content:none }
+    .claims-table tr{ position:relative }
+  }
+
   /* KPI strip */
   .kpis{
     display:grid; gap:.75rem;
@@ -739,8 +762,20 @@
   .flag-auto{
     background:#E6F4EC; color:var(--ok); border-color:var(--ok);
   }
+  /* Manual-approval pill colour */
+  .flag-manual{
+    background:var(--navy-100); color:var(--navy); border-color:var(--navy);
+  }
+  /* Decline-reason / processing-status pill colour */
+  .flag-decline{
+    background:var(--no-bg); color:var(--no); border-color:var(--no);
+  }
+  /* Manual-pending pill colour */
+  .flag-repeat{
+    background:var(--warn-bg); color:var(--warn); border-color:var(--warn);
+  }
 
-  /* ---------- Native dialog (appeal form) ---------- */
+  /* ---------- Native dialog (email preview) ---------- */
   dialog{
     border:1px solid var(--line);
     border-radius:var(--radius);
@@ -885,30 +920,33 @@
       <label class="ctrl">
         <span>User role</span>
         <select id="demo-role">
-          <option value="external">External claimant</option>
-          <option value="internal" selected>Internal Sage team</option>
-          <option value="manager">Claims manager</option>
+          <optgroup label="Internal (in scope)">
+            <option value="internal" selected>Internal Sage team</option>
+            <option value="manager">Claims manager / team lead</option>
+          </optgroup>
+          <optgroup label="External (out of scope for now)">
+            <option value="ext-agent">Subscription agent</option>
+            <option value="ext-individual">Individual customer</option>
+            <option value="ext-institution">Institutional customer</option>
+          </optgroup>
         </select>
       </label>
       <label class="ctrl">
         <span>Validation outcome on submit</span>
         <select id="demo-outcome">
           <option value="approved">Approved</option>
-          <option value="review">Needs review</option>
+          <option value="review">Needs review (repeat claim)</option>
           <option value="declined">Declined</option>
           <option value="auto" selected>Auto (run policy rules)</option>
         </select>
       </label>
       <label class="ctrl">
-        <span>Claimant persona</span>
+        <span>Claimant persona (for example rules)</span>
         <select id="demo-persona">
           <option value="none" selected>Ordinary subscriber</option>
-          <option value="author">Journal author</option>
-          <option value="editor">Editorial board member</option>
-          <option value="society">Society member</option>
-          <option value="vip">VIP institution</option>
-          <option value="trusted">Trusted account</option>
-          <option value="firsttime">First-time claimant</option>
+          <option value="vip">VIP institution (example rule)</option>
+          <option value="society">Society member (example rule)</option>
+          <option value="editor">Editorial board member (example rule)</option>
         </select>
       </label>
       <label class="ctrl toggle" style="margin:.4rem 0">
@@ -941,75 +979,99 @@ const MOCK_JOURNALS = [
   "Health Education & Behavior"
 ];
 
+// A2R-style journal codes, so a claim can be found by code as well as by title.
+const JOURNAL_CODES = {
+  "Journal of Marketing Research":"JMR",
+  "Sociology of Education":"SOE",
+  "Urban Studies":"USJ",
+  "Research on Aging":"ROA",
+  "Journal of Conflict Resolution":"JCR",
+  "Educational Researcher":"EDR",
+  "Organization Studies":"OSS",
+  "Health Education & Behavior":"HEB"
+};
+function journalByCode(code){
+  const c = String(code||"").trim().toUpperCase();
+  return Object.keys(JOURNAL_CODES).find(j => JOURNAL_CODES[j] === c) || "";
+}
+
+// Regional delivery windows. Replacements go by standard post and windows run
+// up to eight weeks for the furthest regions.
+const REGION_WINDOWS = {
+  uk:     { label:"UK & Ireland",   minW:2, maxW:4 },
+  europe: { label:"Europe",         minW:3, maxW:5 },
+  amer:   { label:"Americas",       minW:4, maxW:6 },
+  apac:   { label:"Asia-Pacific",   minW:6, maxW:8 },
+  row:    { label:"Rest of world",  minW:5, maxW:8 }
+};
+function regionFor(account){
+  return (MOCK_SUBSCRIPTIONS[account] || {}).region || "row";
+}
+function deliveryWindow(region){
+  return REGION_WINDOWS[region] || REGION_WINDOWS.row;
+}
+// Infer an estimated arrival date from a dispatch date + the region's worst-case window.
+function estimatedArrival(dispatchISO, region){
+  const w = deliveryWindow(region);
+  const base = dispatchISO ? new Date(dispatchISO) : new Date();
+  if(isNaN(base)) return "";
+  const d = new Date(base); d.setDate(d.getDate() + w.maxW * 7);
+  return d.toISOString().slice(0,10);
+}
+
 const MOCK_SUBSCRIPTIONS = {
-  "INST-100245": { name:"University of Westhaven Library", email:"library@westhaven.ac.uk", active:true },
-  "INST-204918": { name:"Northbridge College", email:"serials@northbridge.edu", active:true },
-  "INST-310007": { name:"Old Crescent Institute", email:"acquisitions@oldcrescent.org", active:false }
+  "INST-100245": { name:"University of Westhaven Library", email:"library@westhaven.ac.uk", active:true,  region:"uk" },
+  "INST-204918": { name:"Northbridge College", email:"serials@northbridge.edu", active:true,  region:"amer" },
+  "INST-310007": { name:"Old Crescent Institute", email:"acquisitions@oldcrescent.org", active:false, region:"europe" }
 };
 
-// Track claims already filed (for duplicate-detection demo)
-const PRIOR_CLAIMS = [
-  { account:"INST-100245", journal:"Urban Studies", volume:"61", issue:"4" } // duplicate scenario
-];
-
-// Track aggregate volume of claims (for "systemic" trigger)
-const AGGREGATE_CLAIMS = {
-  // key: journal|vol|issue  → count
-  "Urban Studies|61|3": 6
+// Repeat-claim policy:
+//   1st replacement copy  → process as normal
+//   2nd request           → needs review (one copy already sent)
+//   3rd request           → needs review, sent by courier with tracking
+//   4th request and beyond → declined (cap reached — customer must repurchase)
+// PRIOR_CLAIMS records how many replacement copies have ALREADY been sent for a
+// given subscription + issue, so a new request can be placed in that sequence.
+const PRIOR_CLAIMS = {
+  // key: account|journal|volume|issue  → copies already sent
+  "INST-100245|Urban Studies|61|4": 1, // one copy already sent → next request needs review
+  "INST-204918|Journal of Marketing Research|62|1": 3 // three already sent → next request declines (cap)
 };
+function priorCopiesSent(account, journal, volume, issue){
+  return PRIOR_CLAIMS[`${account}|${journal}|${volume}|${issue}`] || 0;
+}
 
-// ---------- Rules engine (manager-configurable) ----------
-// Each rule is a persona-based fast-track that auto-approves claims bypassing validation.
-// Order matters: rules are checked top-to-bottom; first match wins.
-// Managers can toggle, see counts, and see the audit list.
+// ---------- Administrator-defined auto-approval rules ----------
+// NOTE: Standard, policy-compliant claims auto-approve by default (see decide()).
+// The rules below are EXAMPLE exception rules an administrator could configure to
+// auto-approve certain accounts even where a manual check might otherwise apply.
+// VIP institution is shown as the worked example; the others are illustrative.
+// Window = 180 days (the six-month claims policy). First match wins.
+const POLICY_WINDOW_DAYS = 180; // six-month claims window from publication date
 const RULES = [
   {
-    id: "author",
-    persona: "Journal author",
-    description: "Auto-approve claims from people who've published in the same journal in the past 24 months.",
+    id: "vip",
+    persona: "VIP institution",
+    description: "Example rule: auto-approve claims from our top institutional accounts by annual spend, even where a second-copy check would otherwise apply.",
     enabled: true,
-    scope: { maxIssues:3, allowedReasons:["not_received","damaged","incomplete"], windowDays:90 },
-    matches: (claim) => claim.persona === "author"
-  },
-  {
-    id: "editor",
-    persona: "Editorial board member",
-    description: "Auto-approve claims from people listed on the journal's editorial board.",
-    enabled: true,
-    scope: { maxIssues:5, allowedReasons:["not_received","damaged","wrong_issue","incomplete"], windowDays:120 },
-    matches: (claim) => claim.persona === "editor"
+    scope: { maxIssues:10, allowedReasons:["not_received","damaged","wrong_issue","incomplete"], windowDays:POLICY_WINDOW_DAYS },
+    matches: (claim) => claim.persona === "vip"
   },
   {
     id: "society",
     persona: "Society member",
-    description: "Auto-approve claims where the journal is published for a learned society and the claimant is a current member.",
+    description: "Example rule: auto-approve claims where the journal is published for a learned society and the claimant is a current member.",
     enabled: true,
-    scope: { maxIssues:2, allowedReasons:["not_received","damaged"], windowDays:90 },
+    scope: { maxIssues:2, allowedReasons:["not_received","damaged"], windowDays:POLICY_WINDOW_DAYS },
     matches: (claim) => claim.persona === "society"
   },
   {
-    id: "vip",
-    persona: "VIP institution",
-    description: "Auto-approve claims from our top 50 institutional accounts by annual spend.",
-    enabled: true,
-    scope: { maxIssues:10, allowedReasons:["not_received","damaged","wrong_issue","incomplete"], windowDays:120 },
-    matches: (claim) => claim.persona === "vip"
-  },
-  {
-    id: "trusted",
-    persona: "Trusted account",
-    description: "Auto-approve claims from accounts with no declined claims in the past 12 months.",
-    enabled: false,  // off by default — managers can turn this on if they want to be more lenient
-    scope: { maxIssues:3, allowedReasons:["not_received","damaged"], windowDays:90 },
-    matches: (claim) => claim.persona === "trusted"
-  },
-  {
-    id: "firsttime",
-    persona: "First-time claimant",
-    description: "Auto-approve a single low-cost claim from accounts that have never claimed before — builds goodwill.",
+    id: "editor",
+    persona: "Editorial board member",
+    description: "Example rule: auto-approve claims from people listed on the journal's editorial board.",
     enabled: false,
-    scope: { maxIssues:1, allowedReasons:["not_received","damaged"], windowDays:90 },
-    matches: (claim) => claim.persona === "firsttime"
+    scope: { maxIssues:5, allowedReasons:["not_received","damaged","wrong_issue","incomplete"], windowDays:POLICY_WINDOW_DAYS },
+    matches: (claim) => claim.persona === "editor"
   }
 ];
 
@@ -1037,6 +1099,46 @@ function personaName(ruleId){
   return r ? r.persona : ruleId;
 }
 
+// ---------- Decline reasons (also used as the "Processing status" on declined claims) ----------
+const DECLINE_REASONS = {
+  repeat_cap:    { label:"Repeat claim",     text:"The claim limit has been reached for this issue — three replacement copies have already been sent. The customer must repurchase the issue." },
+  out_of_window: { label:"Out of timeframe", text:"One or more issues are outside the six-month claim window from their publication date." },
+  too_soon:      { label:"Too soon to claim",text:"It's too early to claim — this issue is still within the expected delivery window for the customer's region (it may still be in transit)." },
+  no_print:      { label:"No print subscription", text:"This account doesn't subscribe to the print component of this journal, so a print replacement can't be sent." },
+  not_published: { label:"Not yet published",text:"One or more issues haven't been published yet, so there's nothing to replace." },
+  manual:        { label:"Declined on review", text:"Declined by a team lead after a manual check." }
+};
+function declineLabel(code){ return (DECLINE_REASONS[code]||{}).label || "Declined"; }
+
+// The "Processing status" shown on the internal dashboard for any claim.
+function processingStatus(c){
+  if(c.decision === "declined"){
+    if(c.autoRule || (!c.assignee && !c.manualDecision)) return { label:"Auto — rejected", kind:"auto-rejected" };
+    return { label:"Manual — rejected", kind:"manual-rejected" };
+  }
+  if(c.decision === "review")   return { label:"Manual — pending", kind:"manual-pending" };
+  if(c.decision === "approved"){
+    if(c.autoRule) return { label:"Auto — approved", kind:"auto-approved" };
+    return { label:"Manual — approved", kind:"manual-approved" };
+  }
+  return { label:"", kind:"" };
+}
+function procPill(c){
+  const ps = processingStatus(c);
+  if(!ps.label) return "";
+  const cls = ps.kind === "auto-approved"  ? "flag flag-auto"
+            : ps.kind === "auto-rejected"  ? "flag flag-decline"
+            : ps.kind === "manual-approved"? "flag flag-manual"
+            : ps.kind === "manual-rejected"? "flag flag-decline"
+            : ps.kind === "manual-pending" ? "flag flag-repeat"
+            : "flag";
+  return `<span class="${cls}">${escapeHtml(ps.label)}</span>`;
+}
+
+// Team of Sage agents claims can be assigned to. null assignee = Unassigned.
+const TEAM = ["Marcus Hale", "Priya Anand", "Joel Okafor", "Nadia Rahman"];
+const CURRENT_AGENT = "Marcus Hale";
+
 // ---------- Seeded dummy claims (for the internal dashboard) ----------
 function daysAgo(n){ const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString(); }
 function daysFromNow(n){ const d=new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
@@ -1047,19 +1149,21 @@ const SEED_CLAIMS = [
     submittedAt: daysAgo(1),
     submittedBy:"Marcus Hale (Sage)",
     onBehalfOf:"Helena Voss, Westhaven Library",
-    account:"INST-100245", accountName:"University of Westhaven Library",
+    account:"INST-100245", accountName:"University of Westhaven Library", region:"uk",
+    assignee:"Marcus Hale",
     journal:"Urban Studies",
     issues:[{volume:"61", number:"3", pubDate: daysFromNow(-40)}],
     reason:"not_received",
-    reasonText:"Several other people have reported the same issue. A colleague is checking whether there's a wider distribution problem.",
+    reasonText:"A replacement copy has already been sent for this issue. A second request needs a manual check before another copy is sent.",
     nextAction:"Reviewer assigned", nextActionDate: daysFromNow(1),
-    flag:"systemic"
+    flag:"repeat"
   },
   {
     ref:"CLM-482877", decision:"approved",
     submittedAt: daysAgo(2),
     submittedBy:"External — claimant",
-    account:"INST-204918", accountName:"Northbridge College",
+    account:"INST-204918", accountName:"Northbridge College", region:"amer",
+    assignee:null,
     journal:"Journal of Marketing Research",
     issues:[{volume:"62", number:"1", pubDate: daysFromNow(-22)}],
     reason:"damaged",
@@ -1070,7 +1174,9 @@ const SEED_CLAIMS = [
     ref:"CLM-482801", decision:"approved",
     submittedAt: daysAgo(3),
     submittedBy:"External — claimant",
-    account:"INST-100245", accountName:"University of Westhaven Library",
+    account:"INST-100245", accountName:"University of Westhaven Library", region:"uk",
+    assignee:null,
+    claimGroup:"CLG-3307",
     journal:"Sociology of Education",
     issues:[
       {volume:"99", number:"2", pubDate: daysFromNow(-30)},
@@ -1085,30 +1191,33 @@ const SEED_CLAIMS = [
     submittedAt: daysAgo(4),
     submittedBy:"Priya Anand (Sage)",
     onBehalfOf:"Tobias Reinhart, Old Crescent",
-    account:"INST-310007", accountName:"Old Crescent Institute",
+    account:"INST-310007", accountName:"Old Crescent Institute", region:"europe",
+    assignee:"Priya Anand",
     journal:"Health Education & Behavior",
     issues:[{volume:"51", number:"2", pubDate: daysFromNow(-55)}],
     reason:"damaged",
-    reasonText:"Damaged-issue claims without a photo go to a colleague for a quick check.",
+    reasonText:"Two replacement copies have already been sent for this issue. A third request needs a manual check; if approved it will be sent by courier.",
     nextAction:"Reviewer assigned", nextActionDate: daysFromNow(1),
-    flag:"no-photo"
+    flag:"repeat"
   },
   {
     ref:"CLM-482702", decision:"declined",
     submittedAt: daysAgo(5),
     submittedBy:"External — claimant",
-    account:"INST-310007", accountName:"Old Crescent Institute",
+    account:"INST-310007", accountName:"Old Crescent Institute", region:"europe",
+    assignee:null, declineCode:"no_print",
     journal:"Research on Aging",
     issues:[{volume:"45", number:"6", pubDate: daysFromNow(-12)}],
     reason:"not_received",
-    reasonText:"This subscription wasn't active when the issue was published.",
-    nextAction:"Appeal window closes", nextActionDate: daysFromNow(25)
+    reasonText:"This account doesn't subscribe to the print component of this journal, so a print replacement can't be sent.",
+    nextAction:"Decision made", nextActionDate: daysFromNow(-5)
   },
   {
     ref:"CLM-482685", decision:"approved",
     submittedAt: daysAgo(6),
     submittedBy:"External — claimant",
-    account:"INST-204918", accountName:"Northbridge College",
+    account:"INST-204918", accountName:"Northbridge College", region:"amer",
+    assignee:null,
     journal:"Organization Studies",
     issues:[{volume:"44", number:"11", pubDate: daysFromNow(-20)}],
     reason:"wrong_issue",
@@ -1119,25 +1228,27 @@ const SEED_CLAIMS = [
     ref:"CLM-482601", decision:"declined",
     submittedAt: daysAgo(8),
     submittedBy:"External — claimant",
-    account:"INST-100245", accountName:"University of Westhaven Library",
+    account:"INST-100245", accountName:"University of Westhaven Library", region:"uk",
+    assignee:null, declineCode:"out_of_window",
     journal:"Educational Researcher",
     issues:[{volume:"53", number:"1", pubDate: daysFromNow(-120)}],
     reason:"not_received",
-    reasonText:"One or more issues are outside the 90-day claim window from their publication date.",
-    nextAction:"Appeal window closes", nextActionDate: daysFromNow(22)
+    reasonText:"One or more issues are outside the six-month claim window from their publication date.",
+    nextAction:"Decision made", nextActionDate: daysFromNow(-8)
   },
   {
     ref:"CLM-482544", decision:"review",
     submittedAt: daysAgo(10),
     submittedBy:"Marcus Hale (Sage)",
     onBehalfOf:"Anne-Sophie Lambert, Westhaven",
-    account:"INST-100245", accountName:"University of Westhaven Library",
+    account:"INST-100245", accountName:"University of Westhaven Library", region:"uk",
+    assignee:"Marcus Hale",
     journal:"Journal of Conflict Resolution",
     issues:[{volume:"68", number:"4", pubDate: daysFromNow(-35)}],
     reason:"incomplete",
-    reasonText:"This claim has been waiting for additional information. A colleague is following up.",
-    nextAction:"Awaiting customer reply", nextActionDate: daysFromNow(2),
-    flag:"awaiting"
+    reasonText:"A replacement copy has already been sent for this issue. A second request needs a manual check before another copy is sent.",
+    nextAction:"Reviewer assigned", nextActionDate: daysFromNow(2),
+    flag:"repeat"
   }
 ];
 
@@ -1177,7 +1288,7 @@ What you claimed for:
 ${formatIssuesPlain(c)}
 
 What happens next:
-Your replacement will be dispatched by ${fmtDate(c.nextActionDate)}. Delivery usually takes around ten working days from there.
+Your replacement will be dispatched by ${fmtDate(c.nextActionDate)}. It goes by standard post, so please allow around four to six weeks for delivery (six to eight weeks for Asia-Pacific).
 
 You don't need to do anything. We'll email you again when the replacement is on its way.
 
@@ -1212,9 +1323,7 @@ The reason:
 ${c.reasonText}
 
 What you can do next:
-If you think we've got this wrong, you can appeal by ${fmtDate(c.nextActionDate)}. To do that, visit our claims portal, find this claim by its reference (${c.ref}), and select "Appeal this decision".
-
-If you'd rather talk to someone, reply to this email and we'll get back to you within two working days.
+If you'd like to discuss this decision, reply to this email and a colleague will get back to you within two working days. Where an issue is no longer eligible for a free replacement, it can still be purchased as a single issue.
 
 Thanks,
 The Sage journal claims team`
@@ -1229,7 +1338,7 @@ Your replacement for claim ${c.ref} has been dispatched today.
 What we're sending:
 ${formatIssuesPlain(c)}
 
-Delivery usually takes around ten working days. If it hasn't arrived by then, reply to this email and we'll look into it.
+It goes by standard post, so please allow around four to six weeks for delivery (six to eight weeks for Asia-Pacific). If it hasn't arrived by then, reply to this email and we'll look into it.
 
 Thanks,
 The Sage journal claims team`
@@ -1322,13 +1431,10 @@ const CLAIMS_STORE = {
     {value:"other",        weight: 3}
   ];
   const personas = [
-    {value:"none",      weight:60},   // ordinary subscriber
-    {value:"author",    weight:14},
-    {value:"society",   weight: 9},
-    {value:"editor",    weight: 4},
-    {value:"vip",       weight: 7},   // derived from account too
-    {value:"trusted",   weight: 4},
-    {value:"firsttime", weight: 2}
+    {value:"none",      weight:74},   // ordinary subscriber
+    {value:"society",   weight:11},
+    {value:"vip",       weight:11},   // derived from account too
+    {value:"editor",    weight: 4}
   ];
   const internalSubmitters = ["Marcus Hale (Sage)","Priya Anand (Sage)","Joel Okafor (Sage)"];
 
@@ -1344,7 +1450,19 @@ const CLAIMS_STORE = {
   const TOTAL = 280;
   let refCounter = 480000;
 
+  // Some claims arrive together in one uploaded file and share a Claim Group reference.
+  let groupCounter = 3320;
+  let groupRef = null, groupLeft = 0;
+
   for(let i=0; i<TOTAL; i++){
+    // Roughly one in eight claims is part of a multi-claim file upload.
+    if(groupLeft <= 0 && rnd() < 0.12){
+      groupRef = "CLG-" + (groupCounter++);
+      groupLeft = 2 + Math.floor(rnd()*4); // 2–5 claims in the group
+    }
+    const claimGroup = groupLeft > 0 ? groupRef : null;
+    if(groupLeft > 0) groupLeft--;
+
     // Recency bias: square-root distribution skews to recent half
     const u = rnd();
     const ageDays = Math.floor(180 * (u*u)); // 0..180, more recent
@@ -1361,7 +1479,7 @@ const CLAIMS_STORE = {
     ]);
     const issues = [];
     for(let j=0; j<nIssues; j++){
-      const pubAgo = 15 + Math.floor(rnd()*100); // 15-115 days before today
+      const pubAgo = 25 + Math.floor(rnd()*100); // 25-125 days before today
       const pubDate = new Date(); pubDate.setDate(pubDate.getDate()-pubAgo);
       issues.push({
         volume: String(50 + Math.floor(rnd()*30)),
@@ -1370,43 +1488,61 @@ const CLAIMS_STORE = {
       });
     }
 
-    // Decide outcome — most are approved, some declined (inactive sub, outside window, dup), few review
-    let decision, reasonText, nextAction, nextActionDate, flag, autoRule = null;
+    // Decide outcome — most approved, some declined (no print sub, outside window, too early), few review (repeat claim)
+    let decision, reasonText, nextAction, nextActionDate, flag, autoRule = null, declineCode = null;
+    const repeatCopies = pickWeighted([
+      {value:0, weight:86}, {value:1, weight:8}, {value:2, weight:4}, {value:3, weight:2}
+    ]); // copies already sent for this issue
 
-    // First: would a rule have auto-approved this?
+    // First: would an administrator rule have auto-approved this?
     const candidate = { reason, issues, persona };
     const rule = findFastTrackRule(candidate);
     if(rule){
       decision = "approved";
-      reasonText = `Auto-approved under the "${rule.persona}" fast-track rule.`;
+      reasonText = `Auto-approved under the "${rule.persona}" administrator rule.`;
       nextAction = "Replacement dispatched";
       nextActionDate = new Date(Date.now() + 3*86400000).toISOString().slice(0,10);
       autoRule = rule.id;
+    } else if(repeatCopies >= 3){
+      decision = "declined";
+      declineCode = "repeat_cap";
+      reasonText = DECLINE_REASONS.repeat_cap.text;
+      nextAction = "Decision made";
+      nextActionDate = new Date(Date.now() - 2*86400000).toISOString().slice(0,10);
     } else if(!sub.active && rnd() < 0.7){
       decision = "declined";
-      reasonText = "This subscription wasn't active when the issue was published.";
-      nextAction = "Appeal window closes";
-      nextActionDate = new Date(Date.now() + 30*86400000).toISOString().slice(0,10);
+      declineCode = "no_print";
+      reasonText = DECLINE_REASONS.no_print.text;
+      nextAction = "Decision made";
+      nextActionDate = new Date(Date.now() - 2*86400000).toISOString().slice(0,10);
     } else if(issues.some(iss => {
         const d = new Date(iss.pubDate);
-        return (Date.now() - d.getTime()) / 86400000 > 90;
+        const days = (Date.now() - d.getTime()) / 86400000;
+        return days >= 0 && days < 28;
       })){
       decision = "declined";
-      reasonText = "One or more issues are outside the 90-day claim window from their publication date.";
-      nextAction = "Appeal window closes";
-      nextActionDate = new Date(Date.now() + 30*86400000).toISOString().slice(0,10);
-    } else if(reason === "damaged" && rnd() < 0.3){
-      // damaged without photo → review
+      declineCode = "too_soon";
+      reasonText = DECLINE_REASONS.too_soon.text;
+      nextAction = "Decision made";
+      nextActionDate = new Date(Date.now() - 2*86400000).toISOString().slice(0,10);
+    } else if(issues.some(iss => {
+        const d = new Date(iss.pubDate);
+        return (Date.now() - d.getTime()) / 86400000 > POLICY_WINDOW_DAYS;
+      })){
+      decision = "declined";
+      declineCode = "out_of_window";
+      reasonText = DECLINE_REASONS.out_of_window.text;
+      nextAction = "Decision made";
+      nextActionDate = new Date(Date.now() - 2*86400000).toISOString().slice(0,10);
+    } else if(repeatCopies >= 1){
+      // a copy has already been sent → repeat claim goes to review
       decision = "review";
-      reasonText = "Damaged-issue claims without a photo go to a colleague for a quick check.";
+      reasonText = repeatCopies === 2
+        ? "Two replacement copies have already been sent for this issue. A third request needs a manual check; if approved it will be sent by courier."
+        : "A replacement copy has already been sent for this issue. A second request needs a manual check before another copy is sent.";
       nextAction = "Reviewer assigned";
       nextActionDate = new Date(Date.now() + 2*86400000).toISOString().slice(0,10);
-      flag = "no-photo";
-    } else if(rnd() < 0.08){
-      decision = "review";
-      reasonText = "Flagged for routine sampling — quality check on automated decisions.";
-      nextAction = "Reviewer assigned";
-      nextActionDate = new Date(Date.now() + 2*86400000).toISOString().slice(0,10);
+      flag = "repeat";
     } else {
       decision = "approved";
       reasonText = "Your claim has been approved. A replacement is being arranged.";
@@ -1417,6 +1553,16 @@ const CLAIMS_STORE = {
     // Submission channel — internal-on-behalf or external
     const internal = rnd() < 0.35;
     const submitter = internal ? pick(internalSubmitters) : "External — claimant";
+    // Internal submissions are owned by the agent who took them; external claims
+    // arrive unassigned until an agent picks them up (unless already closed/auto).
+    let assignee = null;
+    if(internal){
+      assignee = submitter.replace(/\s*\(Sage\)\s*$/, "");
+    } else if(decision === "review"){
+      assignee = null; // external repeat claims wait in the Unassigned queue
+    } else if(decision === "approved" && !autoRule){
+      assignee = pick(TEAM);
+    }
 
     CLAIMS_STORE.items.push({
       ref: "CLM-" + (refCounter++),
@@ -1426,6 +1572,9 @@ const CLAIMS_STORE = {
       onBehalfOf: internal ? "Customer contact" : "",
       account,
       accountName: sub.name,
+      region: sub.region || "row",
+      assignee,
+      claimGroup: claimGroup || undefined,
       journal,
       issues,
       reason,
@@ -1433,6 +1582,7 @@ const CLAIMS_STORE = {
       nextAction,
       nextActionDate,
       flag: flag || undefined,
+      declineCode: declineCode || undefined,
       persona,
       autoRule  // null unless auto-approved
     });
@@ -1479,6 +1629,14 @@ const CLAIMS_STORE = {
   });
 })();
 
+// The example administrator rules are switched OFF by default. They remain in the
+// Administration tab as illustrative templates, and the six months of history above
+// still shows the auto-approvals they *would* have made (so the reporting is populated).
+// Turning one on in Administration makes it fast-track new claims again.
+(function disableExampleRules(){
+  RULES.forEach(r => { r.enabled = false; });
+})();
+
 function ensureSeeded(){
   if(CLAIMS_STORE.seeded) return;
   // already populated at init; flag exists in case we reset elsewhere
@@ -1490,23 +1648,27 @@ function findClaim(ref){
 
 // ---------- state ----------
 const state = {
-  step: "landing",        // landing | sub | issues | reason | review | decision | track | tracker | mgr-overview | mgr-rules | mgr-auto-approved
+  step: "landing",        // landing | sub | issues | reason | review | decision | track | tracker | mgr-overview | mgr-rules | mgr-auto-approved | claim-group | customer-record
   role: "internal",       // external | internal | manager
   outcome: "auto",        // approved | review | declined | auto
-  persona: "none",        // none | author | editor | society | vip | trusted | firsttime
+  persona: "none",        // none | society | vip | editor
   autoEmail: true,        // whether automated emails fire on state change
+  selectedGroup: null,    // claim group ref for drill-down
+  selectedAccount: null,  // account id for customer record view
   data: blank()
 };
 
 function blank(){
   return {
-    onBehalfOf: "",          // internal only
+    onBehalfOf: "",          // internal only — customer email for confirmation
+    idType: "account",       // account | po
     account: "",
-    journal: "",
+    journalBy: "title",      // title | code
+    journal: "",             // resolved journal title
+    journalCode: "",         // entered code (when journalBy === 'code')
     issues: [ newIssue() ],
     reason: "",              // not_received | damaged | wrong_issue | incomplete | other
     expectedBy: "",
-    damagePhotoName: "",
     otherDetails: "",
     submitted: null,         // { ref, decision, reasonText, nextAction, nextActionDate }
     errors: {}
@@ -1515,6 +1677,19 @@ function blank(){
 function newIssue(){
   return { volume:"", number:"", pubDate:"" };
 }
+
+// Simulated A2R look-up of an issue's publication / mail date. In production this comes
+// from A2R; here we synthesise a plausible recent date so validation can run without the
+// user having to type one.
+function simulatePubDate(){
+  const ago = 30 + Math.floor(Math.random()*120); // 30–150 days ago (inside the 6-month window)
+  const dt = new Date(); dt.setDate(dt.getDate() - ago);
+  return dt.toISOString().slice(0,10);
+}
+
+// Mock "published issues" an A2R look-up would return for a journal, for the dropdowns.
+function publishedVolumes(){ return ["60","61","62","63","64"]; }
+function publishedIssues(){ return ["1","2","3","4","5","6","7","8","9","10","11","12"]; }
 
 // ---------- helpers ----------
 const $ = sel => document.querySelector(sel);
@@ -1560,9 +1735,15 @@ function setWho(){
   } else if(state.role === "internal"){
     $("#who-name").textContent = "Marcus Hale";
     $("#who-role-strip").textContent = " — Sage customer services";
+  } else if(state.role === "ext-agent"){
+    $("#who-name").textContent = "EBSCO Subscription Services";
+    $("#who-role-strip").textContent = " — Subscription agent";
+  } else if(state.role === "ext-institution"){
+    $("#who-name").textContent = "University of Westhaven Library";
+    $("#who-role-strip").textContent = " — Institutional customer";
   } else {
     $("#who-name").textContent = "Dr Imani Patel";
-    $("#who-role-strip").textContent = " — Institutional subscriber";
+    $("#who-role-strip").textContent = " — Individual customer";
   }
 }
 
@@ -1595,12 +1776,12 @@ function makeRef(){
 
 // For internal users, "home" is the dashboard
 function homeStep(){
-  if(state.role === "manager") return "mgr-overview";
+  if(state.role === "manager") return "dashboard";
   if(state.role === "internal") return "dashboard";
   return "landing";
 }
 function homeLabel(){
-  if(state.role === "manager") return "Overview";
+  if(state.role === "manager") return "Dashboard";
   if(state.role === "internal") return "Dashboard";
   return "Home";
 }
@@ -1621,16 +1802,20 @@ function render(){
   setWho();
   view.innerHTML = "";
   if(state.step === "landing"){
-    if(state.role === "manager")  return renderMgrOverview();
+    if(state.role === "manager")  return renderDashboard();
     if(state.role === "internal") return renderDashboard();
     return renderLanding();
   }
   if(state.step === "dashboard")        return renderDashboard();
   if(state.step === "claim-detail")     return renderClaimDetail();
+  if(state.step === "mgr-pending")      return renderMgrPending();
   if(state.step === "mgr-overview")     return renderMgrOverview();
   if(state.step === "mgr-rules")        return renderMgrRules();
   if(state.step === "mgr-auto-approved") return renderMgrAutoApproved();
+  if(state.step === "claim-group")      return renderClaimGroup();
+  if(state.step === "customer-record")  return renderCustomerRecord();
   if(state.step === "sub")     return renderSub();
+  if(state.step === "batch")   return renderBatch();
   if(state.step === "issues")  return renderIssues();
   if(state.step === "reason")  return renderReason();
   if(state.step === "review")  return renderReview();
@@ -1640,7 +1825,8 @@ function render(){
 }
 
 /* ---------- 0. Dashboard (internal users) ---------- */
-const dashFilter = { status:"all", q:"", scope:"team" }; // scope: team | mine
+const dashFilter = { status:"all", q:"", scope:"team", from:"", to:"", procStatus:"", rejectReason:"", groupBy:"status" }; // scope: team | unassigned | mine; groupBy: status | agent
+const dashFold = { review:true, approved:true, declined:true }; // collapse state per status group
 
 function renderDashboard(){
   ensureSeeded();
@@ -1652,13 +1838,16 @@ function renderDashboard(){
     all: items.length,
     approved: items.filter(c=>c.decision==="approved").length,
     review:   items.filter(c=>c.decision==="review").length,
-    declined: items.filter(c=>c.decision==="declined").length
+    declined: items.filter(c=>c.decision==="declined").length,
+    unassigned: items.filter(c=>!c.assignee && c.decision!=="declined").length
   };
 
   // claims awaiting reviewer action — useful sub-stat for "review"
   const awaitingMine = items.filter(c=>c.decision==="review" && c.submittedBy && c.submittedBy.includes("(Sage)")).length;
-  // systemic/flagged claims warrant prominence in "Needs review"
+  // repeat-claim reviews warrant prominence in "Needs review"
   const flaggedCount = items.filter(c=>c.decision==="review" && c.flag).length;
+
+  const isManager = state.role === "manager";
 
   const wrap = document.createElement("div");
   wrap.className = "stack";
@@ -1666,7 +1855,7 @@ function renderDashboard(){
     <div class="dash-hero">
       <div>
         <h1>Claims dashboard</h1>
-        <p class="lede">All journal issue claims across your team, grouped by status. Click any claim to open it, or start a new one on behalf of a customer.</p>
+        <p class="lede">${isManager ? 'All journal issue claims across your team. Use <em>Needs review</em> + <em>My queue</em> to see claims awaiting your decision, or <em>Approved</em> + <em>Auto — approved</em> to review auto-processed claims.' : 'All journal issue claims across your team. Click any claim to open it, or start a new one on behalf of a customer.'}</p>
       </div>
       <div class="cta-card">
         <h2>New claim on behalf of a customer</h2>
@@ -1674,6 +1863,13 @@ function renderDashboard(){
         <button class="btn btn-primary" id="new-claim">Start a claim</button>
       </div>
     </div>
+
+    ${isManager ? `
+    <nav class="mgr-tabs" aria-label="Team lead sections" style="margin-bottom:.25rem">
+      <a href="#" data-go="dashboard" class="is-active" aria-current="page">Claims</a>
+      <a href="#" data-go="mgr-overview">Reporting</a>
+      <a href="#" data-go="mgr-rules">Automations</a>
+    </nav>` : ''}
 
     <div class="stats" role="group" aria-label="Filter claims by status">
       <button class="stat" data-kind="all"      data-filter="all"      type="button" aria-pressed="${dashFilter.status==='all'}">
@@ -1684,7 +1880,7 @@ function renderDashboard(){
       <button class="stat" data-kind="review"   data-filter="review"   type="button" aria-pressed="${dashFilter.status==='review'}">
         <span class="n">${counts.review}</span>
         <span class="lbl">Needs review</span>
-        <span class="sub-n">${flaggedCount} flagged · ${awaitingMine} from your team</span>
+        <span class="sub-n">${flaggedCount} repeat claims · ${awaitingMine} from your team</span>
       </button>
       <button class="stat" data-kind="approved" data-filter="approved" type="button" aria-pressed="${dashFilter.status==='approved'}">
         <span class="n">${counts.approved}</span>
@@ -1694,7 +1890,7 @@ function renderDashboard(){
       <button class="stat" data-kind="declined" data-filter="declined" type="button" aria-pressed="${dashFilter.status==='declined'}">
         <span class="n">${counts.declined}</span>
         <span class="lbl">Declined</span>
-        <span class="sub-n">Within appeal window</span>
+        <span class="sub-n">Decision made</span>
       </button>
     </div>
 
@@ -1704,17 +1900,55 @@ function renderDashboard(){
         <input type="text" id="dash-q" value="${escapeHtml(dashFilter.q)}" autocomplete="off">
       </div>
       <div class="field" style="flex:0 0 auto">
+        <label for="dash-from">Submitted from</label>
+        <input type="date" id="dash-from" value="${escapeHtml(dashFilter.from||'')}">
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <label for="dash-to">to</label>
+        <input type="date" id="dash-to" value="${escapeHtml(dashFilter.to||'')}">
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <label for="dash-proc-status">Processing status</label>
+        <select id="dash-proc-status">
+          <option value="">All</option>
+          <option value="Auto — approved"   ${dashFilter.procStatus==='Auto — approved'   ?'selected':''}>Auto — approved</option>
+          <option value="Auto — rejected"   ${dashFilter.procStatus==='Auto — rejected'   ?'selected':''}>Auto — rejected</option>
+          <option value="Manual — pending"  ${dashFilter.procStatus==='Manual — pending'  ?'selected':''}>Manual — pending</option>
+          <option value="Manual — approved" ${dashFilter.procStatus==='Manual — approved' ?'selected':''}>Manual — approved</option>
+          <option value="Manual — rejected" ${dashFilter.procStatus==='Manual — rejected' ?'selected':''}>Manual — rejected</option>
+        </select>
+      </div>
+      <div class="field" style="flex:0 0 auto" id="reject-reason-filter-wrap" ${dashFilter.status !== 'declined' && dashFilter.procStatus.indexOf('reject') === -1 && dashFilter.procStatus !== 'Auto — rejected' && dashFilter.procStatus !== 'Manual — rejected' ? 'hidden' : ''}>
+        <label for="dash-reject-reason">Reject reason</label>
+        <select id="dash-reject-reason">
+          <option value="">All</option>
+          <option value="repeat_cap"    ${dashFilter.rejectReason==='repeat_cap'    ?'selected':''}>Repeat claim — copy limit reached</option>
+          <option value="manual"        ${dashFilter.rejectReason==='manual'        ?'selected':''}>Other — declined on review</option>
+          <option value="out_of_window" ${dashFilter.rejectReason==='out_of_window' ?'selected':''}>Out of timeframe</option>
+          <option value="too_soon"      ${dashFilter.rejectReason==='too_soon'      ?'selected':''}>Too soon to claim</option>
+          <option value="no_print"      ${dashFilter.rejectReason==='no_print'      ?'selected':''}>No print subscription</option>
+        </select>
+      </div>
+      <div class="field" style="flex:0 0 auto">
         <span class="lbl">Show</span>
-        <div class="seg" role="radiogroup" aria-label="Show team or just my claims">
+        <div class="seg" role="radiogroup" aria-label="Show team, unassigned, or just my claims">
           <button type="button" class="seg-btn" data-scope="team" aria-pressed="${dashFilter.scope==='team'}">Whole team</button>
+          <button type="button" class="seg-btn" data-scope="unassigned" aria-pressed="${dashFilter.scope==='unassigned'}">Unassigned${counts.unassigned?` (${counts.unassigned})`:''}</button>
           <button type="button" class="seg-btn" data-scope="mine" aria-pressed="${dashFilter.scope==='mine'}">My queue</button>
+        </div>
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <span class="lbl">Group by</span>
+        <div class="seg" role="radiogroup" aria-label="Group claims by status or by agent">
+          <button type="button" class="seg-btn" data-groupby="status" aria-pressed="${dashFilter.groupBy==='status'}">Status</button>
+          <button type="button" class="seg-btn" data-groupby="agent"  aria-pressed="${dashFilter.groupBy==='agent'}">Agent</button>
         </div>
       </div>
     </div>
 
     <div id="groups" aria-live="polite"></div>
 
-    <div class="open-q" style="margin-top:1rem"><strong>Open question:</strong> Should Sage agents see <em>only</em> their own queue by default, or the full team queue? Try the toggle above.</div>
+    <div class="open-q" style="margin-top:1rem"><strong>Open question:</strong> The queue defaults to <em>Whole team</em>. Use <em>Unassigned</em> to see externally-submitted claims no-one has picked up yet — you can assign an agent directly from the list without opening the claim.</div>
   `;
   view.appendChild(wrap);
 
@@ -1734,12 +1968,21 @@ function renderDashboard(){
     });
   });
 
-  wrap.querySelectorAll(".seg-btn").forEach(btn=>{
+  wrap.querySelectorAll(".seg-btn[data-scope]").forEach(btn=>{
     btn.addEventListener("click", ()=>{
       dashFilter.scope = btn.dataset.scope;
-      wrap.querySelectorAll(".seg-btn").forEach(b=> b.setAttribute("aria-pressed", b.dataset.scope === dashFilter.scope));
+      wrap.querySelectorAll(".seg-btn[data-scope]").forEach(b=> b.setAttribute("aria-pressed", b.dataset.scope === dashFilter.scope));
       paintGroups();
-      announce(dashFilter.scope === 'mine' ? "Showing claims submitted by you only." : "Showing claims for the whole team.");
+      announce(dashFilter.scope === 'mine' ? "Showing claims assigned to you." : dashFilter.scope === 'unassigned' ? "Showing unassigned claims." : "Showing claims for the whole team.");
+    });
+  });
+
+  wrap.querySelectorAll(".seg-btn[data-groupby]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      dashFilter.groupBy = btn.dataset.groupby;
+      wrap.querySelectorAll(".seg-btn[data-groupby]").forEach(b=> b.setAttribute("aria-pressed", b.dataset.groupby === dashFilter.groupBy));
+      paintGroups();
+      announce(dashFilter.groupBy === 'agent' ? "Claims grouped by agent." : "Claims grouped by status.");
     });
   });
 
@@ -1749,17 +1992,56 @@ function renderDashboard(){
     paintGroups();
   });
 
+  const fromEl = wrap.querySelector("#dash-from");
+  const toEl = wrap.querySelector("#dash-to");
+  fromEl.addEventListener("change", e=>{ dashFilter.from = e.target.value; paintGroups(); });
+  toEl.addEventListener("change", e=>{ dashFilter.to = e.target.value; paintGroups(); });
+
+  const procStatusEl = wrap.querySelector("#dash-proc-status");
+  procStatusEl && procStatusEl.addEventListener("change", e=>{
+    dashFilter.procStatus = e.target.value;
+    // Show/hide reject reason filter when a rejected status is selected
+    const rrWrap = wrap.querySelector("#reject-reason-filter-wrap");
+    if(rrWrap){
+      const showReject = dashFilter.status === "declined" || e.target.value === "Auto — rejected" || e.target.value === "Manual — rejected";
+      rrWrap.hidden = !showReject;
+    }
+    paintGroups();
+  });
+
+  const rejectReasonEl = wrap.querySelector("#dash-reject-reason");
+  rejectReasonEl && rejectReasonEl.addEventListener("change", e=>{
+    dashFilter.rejectReason = e.target.value;
+    paintGroups();
+  });
+
   function applyFilters(rows){
     if(dashFilter.scope === "mine"){
-      rows = rows.filter(c => (c.submittedBy || "").startsWith("Marcus Hale"));
+      rows = rows.filter(c => c.assignee === CURRENT_AGENT);
+    } else if(dashFilter.scope === "unassigned"){
+      rows = rows.filter(c => !c.assignee);
     }
     if(dashFilter.q){
       rows = rows.filter(c=>
         c.ref.toLowerCase().includes(dashFilter.q) ||
         c.account.toLowerCase().includes(dashFilter.q) ||
         (c.accountName||"").toLowerCase().includes(dashFilter.q) ||
+        (c.claimGroup||"").toLowerCase().includes(dashFilter.q) ||
+        (c.assignee||"").toLowerCase().includes(dashFilter.q) ||
         c.journal.toLowerCase().includes(dashFilter.q)
       );
+    }
+    if(dashFilter.from){
+      rows = rows.filter(c => c.submittedAt.slice(0,10) >= dashFilter.from);
+    }
+    if(dashFilter.to){
+      rows = rows.filter(c => c.submittedAt.slice(0,10) <= dashFilter.to);
+    }
+    if(dashFilter.procStatus){
+      rows = rows.filter(c => processingStatus(c).label === dashFilter.procStatus);
+    }
+    if(dashFilter.rejectReason){
+      rows = rows.filter(c => c.declineCode === dashFilter.rejectReason);
     }
     return rows;
   }
@@ -1768,14 +2050,29 @@ function renderDashboard(){
     const container = wrap.querySelector("#groups");
     container.innerHTML = "";
 
+    // Show/hide reject reason filter based on current status selection
+    const rrWrap = wrap.querySelector("#reject-reason-filter-wrap");
+    if(rrWrap){
+      const showReject = dashFilter.status === "declined" || dashFilter.procStatus === "Auto — rejected" || dashFilter.procStatus === "Manual — rejected";
+      rrWrap.hidden = !showReject;
+    }
+
+    if(dashFilter.groupBy === "agent"){
+      paintGroupsByAgent(container);
+    } else {
+      paintGroupsByStatus(container);
+    }
+  }
+
+  function paintGroupsByStatus(container){
     const groupOrder = dashFilter.status === "all"
-      ? ["review","approved","declined"]              // Needs review first — most actionable
+      ? ["review","approved","declined"]
       : [dashFilter.status];
 
     const groupMeta = {
       review:   { label:"Needs review", note:"Action required from your team." },
       approved: { label:"Approved",     note:"Replacement is being arranged." },
-      declined: { label:"Declined",     note:"Within their 30-day appeal window." }
+      declined: { label:"Declined",     note:"Decision made and recorded." }
     };
 
     let totalShown = 0;
@@ -1786,46 +2083,216 @@ function renderDashboard(){
       const rows = applyFilters(all);
       totalShown += rows.length;
 
+      const showBulk = isManager && status === "review" && rows.length > 0;
+
       const section = document.createElement("section");
       section.className = "group";
       section.setAttribute("aria-labelledby", "group-h-" + status);
+      const isDeclined = status === "declined";
       section.innerHTML = `
-        <header class="group-h">
+        <details class="group-fold" ${dashFold[status] === false ? '' : 'open'} data-status="${status}">
+        <summary class="group-h">
           <h2 id="group-h-${status}">
             <span class="badge" data-state="${status}"><span class="dot" aria-hidden="true"></span>${groupMeta[status].label}</span>
             <span class="group-count">${rows.length}${rows.length !== all.length ? ` of ${all.length}` : ''}</span>
           </h2>
           <p class="group-note">${groupMeta[status].note}</p>
-        </header>
+        </summary>
         ${rows.length ? `
+        ${showBulk ? `
+        <div class="bulk-bar" role="group" aria-label="Bulk actions">
+          <label class="bulk-check"><input type="checkbox" id="bulk-all-dash" aria-label="Select all pending claims"> Select all</label>
+          <span id="bulk-count-dash" class="meta-cell" aria-live="polite">0 selected</span>
+          <button class="btn btn-primary" id="bulk-approve-dash" disabled>Approve selected</button>
+        </div>` : ''}
         <div class="claims-table-wrap">
           <table class="claims-table">
             <thead>
               <tr>
+                ${showBulk ? `<th scope="col" class="col-check"><span class="sr-only">Select</span></th>` : ''}
                 <th scope="col">Reference</th>
                 <th scope="col">Account</th>
                 <th scope="col">Journal &amp; issue</th>
-                <th scope="col">Next action</th>
+                <th scope="col">Processing status</th>
+                <th scope="col">${isDeclined ? 'Reject reason' : (status === 'approved' ? 'Delivery est.' : 'Next action')}</th>
+                <th scope="col">Assigned to</th>
                 <th scope="col">Submitted</th>
               </tr>
             </thead>
             <tbody>
-              ${rows.map(c=>renderRow(c)).join("")}
+              ${rows.map(c=>renderRow(c, status, showBulk)).join("")}
             </tbody>
           </table>
         </div>` : `<div class="claims-table-wrap"><div class="empty">No claims in this group.</div></div>`}
+        </details>
       `;
       container.appendChild(section);
     });
 
-    // Wire row clicks
+    wireRows(container);
+
+    // Bulk-select wiring (manager only, review group)
+    if(isManager){
+      const rowChecks = () => Array.from(container.querySelectorAll(".bulk-row-dash"));
+      const getSelected = () => rowChecks().filter(cb=>cb.checked).map(cb=>cb.dataset.ref);
+      function refreshBulkDash(){
+        const sel = getSelected();
+        const cnt = container.querySelector("#bulk-count-dash");
+        const btn = container.querySelector("#bulk-approve-dash");
+        const all = container.querySelector("#bulk-all-dash");
+        if(cnt) cnt.textContent = `${sel.length} selected`;
+        if(btn) btn.disabled = sel.length === 0;
+        if(all){
+          const boxes = rowChecks();
+          all.checked = boxes.length > 0 && sel.length === boxes.length;
+          all.indeterminate = sel.length > 0 && sel.length < boxes.length;
+        }
+      }
+      container.querySelectorAll(".bulk-row-dash").forEach(cb=> cb.addEventListener("change", refreshBulkDash));
+      const bulkAll = container.querySelector("#bulk-all-dash");
+      bulkAll && bulkAll.addEventListener("change", e=>{
+        rowChecks().forEach(cb=> cb.checked = e.target.checked);
+        refreshBulkDash();
+      });
+      const bulkBtn = container.querySelector("#bulk-approve-dash");
+      bulkBtn && bulkBtn.addEventListener("click", ()=>{
+        const refs = getSelected();
+        if(!refs.length) return;
+        let n = 0;
+        refs.forEach(ref=>{
+          const c = findClaim(ref);
+          if(!c || c.decision !== "review") return;
+          c.decision = "approved";
+          c.reasonText = "Approved by a team lead in a bulk action. A replacement is being arranged.";
+          c.nextAction = "Replacement dispatched";
+          c.nextActionDate = todayPlus(3);
+          c.flag = null; c.declineCode = null; c.autoRule = null; c.manualDecision = true;
+          if(state.autoEmail) sendEmail(c, "approved", {auto:true});
+          n++;
+        });
+        announce(`${n} claim${n===1?"":"s"} approved.`);
+        paintGroups();
+      });
+    }
+
+    container.querySelectorAll("details.group-fold").forEach(det=>{
+      det.addEventListener("toggle", ()=>{
+        const st = det.dataset.status;
+        if(st) dashFold[st] = det.open;
+      });
+    });
+
+    if(totalShown === 0){
+      container.insertAdjacentHTML("afterbegin",
+        `<div class="claims-table-wrap"><div class="empty">No claims match your filters. Try clearing the search.</div></div>`);
+    }
+  }
+
+  function paintGroupsByAgent(container){
+    const allRows = applyFilters(
+      dashFilter.status === "all"
+        ? CLAIMS_STORE.items.slice()
+        : CLAIMS_STORE.items.filter(c => c.decision === dashFilter.status)
+    ).sort((a,b)=> b.submittedAt.localeCompare(a.submittedAt));
+
+    // Group by assignee
+    const agentMap = {};
+    allRows.forEach(c => {
+      const key = c.assignee || "__unassigned__";
+      if(!agentMap[key]) agentMap[key] = [];
+      agentMap[key].push(c);
+    });
+
+    // Sort agents: unassigned last, then alphabetical
+    const agentKeys = Object.keys(agentMap).sort((a,b)=>{
+      if(a === "__unassigned__") return 1;
+      if(b === "__unassigned__") return -1;
+      return a.localeCompare(b);
+    });
+
+    if(agentKeys.length === 0){
+      container.innerHTML = `<div class="claims-table-wrap"><div class="empty">No claims match your filters.</div></div>`;
+      return;
+    }
+
+    agentKeys.forEach(agentKey => {
+      const rows = agentMap[agentKey];
+      const label = agentKey === "__unassigned__" ? "Unassigned" : agentKey;
+      const isMe = agentKey === CURRENT_AGENT;
+
+      const section = document.createElement("section");
+      section.className = "group";
+      const sectionId = "group-agent-" + agentKey.replace(/\W+/g,"_");
+      section.innerHTML = `
+        <details class="group-fold" open data-agent="${escapeHtml(agentKey)}">
+          <summary class="group-h">
+            <h2 id="${sectionId}">
+              ${escapeHtml(label)}${isMe ? ` <span class="badge" data-state="approved" style="font-size:.75rem; margin-left:.3rem">You</span>` : ''}
+              <span class="group-count">${rows.length} claim${rows.length===1?'':'s'}</span>
+            </h2>
+          </summary>
+          <div class="claims-table-wrap">
+            <table class="claims-table">
+              <thead>
+                <tr>
+                  <th scope="col">Reference</th>
+                  <th scope="col">Account</th>
+                  <th scope="col">Journal &amp; issue</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Processing status</th>
+                  <th scope="col">Delivery est.</th>
+                  <th scope="col">Submitted</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map(c=>renderRowByAgent(c)).join("")}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      `;
+      container.appendChild(section);
+    });
+
+    wireRows(container);
+  }
+
+  function renderRowByAgent(c){
+    const issuesText = c.issues.length === 1
+      ? `Vol ${escapeHtml(c.issues[0].volume)}, no. ${escapeHtml(c.issues[0].number)}`
+      : `${c.issues.length} issues`;
+    const statusLabels = { approved:"Approved", review:"Needs review", declined:"Declined" };
+    const procCell = procPill(c) || '<span class="meta-cell">—</span>';
+    let deliveryCell = '<span class="meta-cell">—</span>';
+    if(c.decision === "approved"){
+      const region = c.region || regionFor(c.account);
+      const eta = estimatedArrival(c.nextActionDate, region);
+      const win = deliveryWindow(region);
+      deliveryCell = eta
+        ? `<div>${escapeHtml(fmtDate(eta))}</div><div class="meta-cell">${win.minW}–${win.maxW} wks · ${escapeHtml(win.label)}</div>`
+        : '<span class="meta-cell">—</span>';
+    }
+    return `<tr data-ref="${escapeHtml(c.ref)}" tabindex="0">
+      <td data-label="Reference"><a href="#" class="row-link ref-cell" data-ref="${escapeHtml(c.ref)}">${escapeHtml(c.ref)}</a></td>
+      <td data-label="Account"><div>${escapeHtml(c.accountName||"")}</div><div class="meta-cell">${escapeHtml(c.account)}</div></td>
+      <td data-label="Journal &amp; issue"><div>${escapeHtml(c.journal)}</div><div class="meta-cell">${issuesText}</div></td>
+      <td data-label="Status"><span class="badge" data-state="${c.decision}"><span class="dot" aria-hidden="true"></span>${statusLabels[c.decision]||c.decision}</span></td>
+      <td data-label="Processing status">${procCell}</td>
+      <td data-label="Delivery est.">${deliveryCell}</td>
+      <td data-label="Submitted"><div>${escapeHtml(fmtDate(c.submittedAt.slice(0,10)))}</div><div class="meta-cell">${escapeHtml(c.submittedBy||"")}</div></td>
+    </tr>`;
+  }
+
+  function wireRows(container){
+    // Row click → claim detail
     container.querySelectorAll("tr[data-ref]").forEach(tr=>{
       const openIt = ()=>{
+        // Don't navigate if a button/select inside the row was clicked
         state.selectedRef = tr.dataset.ref;
         go("claim-detail");
       };
       tr.addEventListener("click", e=>{
-        if(e.target.closest("a")) return;
+        if(e.target.closest("a,button,select")) return;
         openIt();
       });
       tr.addEventListener("keydown", e=>{
@@ -1839,34 +2306,89 @@ function renderDashboard(){
       });
     });
 
-    if(totalShown === 0){
-      container.insertAdjacentHTML("afterbegin",
-        `<div class="claims-table-wrap"><div class="empty">No claims match your filters. Try clearing the search.</div></div>`);
-    }
+    // Claim group links
+    container.querySelectorAll("a[data-group]").forEach(a=>{
+      a.addEventListener("click", e=>{
+        e.preventDefault();
+        state.selectedGroup = a.dataset.group;
+        go("claim-group");
+      });
+    });
+
+    // Quick-assign from unassigned list
+    container.querySelectorAll("select.quick-assign").forEach(sel=>{
+      sel.addEventListener("change", e=>{
+        e.stopPropagation();
+        const ref = sel.dataset.ref;
+        const c = findClaim(ref);
+        if(!c) return;
+        c.assignee = sel.value || null;
+        announce(c.assignee ? `${ref} assigned to ${c.assignee}.` : `${ref} set to unassigned.`);
+        paintGroups();
+      });
+    });
+
+    // Account links → customer record
+    container.querySelectorAll("a[data-account]").forEach(a=>{
+      a.addEventListener("click", e=>{
+        e.preventDefault();
+        state.selectedAccount = a.dataset.account;
+        go("customer-record");
+      });
+    });
   }
 
-  function renderRow(c){
+  function renderRow(c, status, showBulk=false){
     const issuesText = c.issues.length === 1
       ? `Vol ${escapeHtml(c.issues[0].volume)}, no. ${escapeHtml(c.issues[0].number)}`
       : `${c.issues.length} issues`;
-    const flagPill = c.flag ? `<span class="flag" data-flag="${escapeHtml(c.flag)}" title="${escapeHtml(flagLabel(c.flag))}">${escapeHtml(flagLabel(c.flag))}</span>` : '';
-    const autoPill = c.autoRule ? `<span class="flag flag-auto" title="Auto-approved by the ${personaName(c.autoRule)} rule">Auto · ${escapeHtml(personaName(c.autoRule))}</span>` : '';
+    const flagPill = c.flag && c.decision !== "review" ? `<span class="flag" data-flag="${escapeHtml(c.flag)}" title="${escapeHtml(flagLabel(c.flag))}">${escapeHtml(flagLabel(c.flag))}</span>` : '';
+    const groupMeta = c.claimGroup ? `<div class="meta-cell">Group <a href="#" class="row-link" data-group="${escapeHtml(c.claimGroup)}">${escapeHtml(c.claimGroup)}</a></div>` : '';
+    const isUnassigned = dashFilter.scope === "unassigned" || (!c.assignee);
+    const assignedCell = isUnassigned
+      ? `<div>
+           <select class="quick-assign" data-ref="${escapeHtml(c.ref)}" aria-label="Assign ${escapeHtml(c.ref)}" style="font-size:.82rem; padding:.3rem .4rem; min-height:32px; width:auto; max-width:10rem; border:1px solid var(--line); border-radius:var(--radius)">
+             <option value="">Unassigned</option>
+             ${TEAM.map(m=>`<option value="${escapeHtml(m)}" ${c.assignee===m?'selected':''}>${escapeHtml(m)}</option>`).join("")}
+           </select>
+         </div>`
+      : `<div>${escapeHtml(c.assignee)}</div>`;
+    const procCell = procPill(c) || '<span class="meta-cell">—</span>';
+    let fifthCell;
+    if(c.decision === "declined"){
+      fifthCell = `<div class="meta-cell">${escapeHtml(declineLabel(c.declineCode))}</div>`;
+    } else if(c.decision === "approved"){
+      const region = c.region || regionFor(c.account);
+      const eta = estimatedArrival(c.nextActionDate, region);
+      const win = deliveryWindow(region);
+      fifthCell = eta
+        ? `<div>${escapeHtml(fmtDate(eta))}</div><div class="meta-cell">${win.minW}–${win.maxW} wks · ${escapeHtml(win.label)}</div>`
+        : `<div>${escapeHtml(c.nextAction)}</div>`;
+    } else {
+      fifthCell = `<div>${escapeHtml(c.nextAction)}</div><div class="meta-cell">by ${escapeHtml(fmtDate(c.nextActionDate))}</div>`;
+    }
     return `<tr data-ref="${escapeHtml(c.ref)}" tabindex="0">
+      ${showBulk ? `<td data-label="Select" class="col-check"><input type="checkbox" class="bulk-row-dash" data-ref="${escapeHtml(c.ref)}" aria-label="Select claim ${escapeHtml(c.ref)}"></td>` : ''}
       <td data-label="Reference">
         <a href="#" class="row-link ref-cell" data-ref="${escapeHtml(c.ref)}">${escapeHtml(c.ref)}</a>
-        ${flagPill}${autoPill}
+        ${flagPill}
+        ${groupMeta}
       </td>
-      <td data-label="Account"><div>${escapeHtml(c.accountName||"")}</div><div class="meta-cell">${escapeHtml(c.account)}</div></td>
-      <td data-label="Journal & issue"><div>${escapeHtml(c.journal)}</div><div class="meta-cell">${issuesText}</div></td>
-      <td data-label="Next action"><div>${escapeHtml(c.nextAction)}</div><div class="meta-cell">by ${escapeHtml(fmtDate(c.nextActionDate))}</div></td>
+      <td data-label="Account">
+        <div><a href="#" class="row-link" data-account="${escapeHtml(c.account)}">${escapeHtml(c.accountName||"")}</a></div>
+        <div class="meta-cell">${escapeHtml(c.account)}</div>
+      </td>
+      <td data-label="Journal &amp; issue"><div>${escapeHtml(c.journal)}</div><div class="meta-cell">${issuesText}</div></td>
+      <td data-label="Processing status">${procCell}</td>
+      <td data-label="${c.decision === 'declined' ? 'Reject reason' : c.decision === 'approved' ? 'Delivery est.' : 'Next action'}">${fifthCell}</td>
+      <td data-label="Assigned to">${assignedCell}</td>
       <td data-label="Submitted"><div>${escapeHtml(fmtDate(c.submittedAt.slice(0,10)))}</div><div class="meta-cell">${escapeHtml(c.submittedBy||"")}</div></td>
     </tr>`;
   }
 
   function flagLabel(flag){
-    if(flag === "systemic") return "Possible systemic issue";
-    if(flag === "no-photo") return "Damaged — no photo";
-    if(flag === "awaiting") return "Awaiting customer";
+    if(flag === "repeat") return "Repeat claim";
+    if(flag === "courier") return "Courier";
     return flag;
   }
 
@@ -1906,18 +2428,16 @@ function renderClaimDetail(){
     other:"Something else"
   };
   function flagLabelForDetail(f){
-    if(f === "systemic") return "Possible systemic issue";
-    if(f === "no-photo") return "Damaged with no photo";
-    if(f === "awaiting") return "Awaiting customer";
+    if(f === "repeat") return "Repeat claim";
+    if(f === "courier") return "Courier delivery";
     return f;
   }
 
   const wrap = document.createElement("div");
   wrap.className = "stack";
   const flagMessages = {
-    "systemic":"Five or more other people have reported missing copies of this same issue. This may be a wider distribution problem — check before approving individually.",
-    "no-photo":"The customer didn't include a photo of the damage. You may want to ask for one before deciding.",
-    "awaiting":"This claim is waiting for the customer to reply with extra information."
+    "repeat":"At least one replacement copy has already been sent for this issue. Check the claim history before sending another. After three copies have been sent, the fourth request is declined and the customer must repurchase the issue.",
+    "courier":"This is the third replacement copy for this issue — if approved it should be sent by courier with tracking."
   };
   const flagBlock = c.flag ? `
     <div class="notice" style="border-left-color:var(--warn); background:var(--warn-bg)">
@@ -1943,31 +2463,67 @@ function renderClaimDetail(){
       ${flagBlock}
     </section>
 
+    ${c.decision !== "declined" ? `
+    <section class="card">
+      <h2>Assignment</h2>
+      <p style="color:var(--ink-soft); margin-bottom:1rem">${c.assignee ? `This claim is being worked by <strong>${escapeHtml(c.assignee)}</strong>.` : `This claim is <strong>unassigned</strong> — assign it to an agent so two people don't work on it at once.`}</p>
+      <div class="row" style="align-items:flex-end; gap:.75rem; flex-wrap:wrap">
+        <div class="field" style="margin-bottom:0; flex:0 0 auto">
+          <label for="assignee-sel">Assigned to</label>
+          <select id="assignee-sel">
+            <option value="" ${!c.assignee?'selected':''}>Unassigned</option>
+            ${TEAM.map(m=>`<option value="${escapeHtml(m)}" ${c.assignee===m?'selected':''}>${escapeHtml(m)}</option>`).join("")}
+          </select>
+        </div>
+        <button class="btn btn-secondary" data-act="assign">Save assignment</button>
+        ${c.assignee !== CURRENT_AGENT ? `<button class="btn btn-tertiary" data-act="assign-me">Assign to me</button>` : ``}
+      </div>
+    </section>` : ``}
+
     ${c.decision === "review" ? `
     <section class="card">
       <h2>Reviewer actions</h2>
-      <p style="color:var(--ink-soft); margin-bottom:1rem">This claim needs a decision. Use one of the actions below.</p>
+      <p style="color:var(--ink-soft); margin-bottom:1rem">This claim needs a decision from a team lead. Repeat claims (a second or third copy) are reviewed here before another copy is sent.</p>
       <div class="row">
-        <button class="btn btn-primary" data-act="approve">Approve and arrange replacement</button>
-        <button class="btn btn-danger" data-act="decline">Decline this claim</button>
-        <button class="btn btn-secondary" data-act="ask">Ask the customer for more information</button>
+        <button class="btn btn-primary" data-act="approve-open">Approve and arrange replacement</button>
+        <button class="btn btn-danger" data-act="decline-open">Decline this claim</button>
+      </div>
+      <div id="approve-box" class="reveal" hidden style="margin-top:1rem; border-left-color:var(--ok); background:var(--ok-bg)">
+        <p style="margin-bottom:.75rem; font-weight:600">Confirm approval</p>
+        <p style="margin-bottom:.75rem; font-size:.95rem">Approving this claim will arrange a replacement copy and send a confirmation email to the customer. This cannot be undone.</p>
+        <div class="row">
+          <button class="btn btn-primary" data-act="approve-confirm" style="background:var(--ok); border-color:var(--ok)">Yes, approve this claim</button>
+          <button class="btn btn-tertiary" data-act="approve-cancel">Cancel</button>
+        </div>
+      </div>
+      <div id="decline-box" class="reveal" hidden style="margin-top:1rem">
+        <div class="field" style="margin-bottom:.75rem">
+          <label for="decline-reason">Reason for declining <span aria-hidden="true">*</span></label>
+          <select id="decline-reason">
+            <option value="repeat_cap">Repeat claim — copy limit reached</option>
+            <option value="out_of_window">Out of timeframe — outside the six-month window</option>
+            <option value="too_soon">Too soon to claim — still within the delivery window</option>
+            <option value="no_print">No print subscription on this account</option>
+            <option value="manual">Other — declined on review</option>
+          </select>
+        </div>
+        <div class="row">
+          <button class="btn btn-danger" data-act="decline-confirm">Confirm decline</button>
+          <button class="btn btn-tertiary" data-act="decline-cancel">Cancel</button>
+        </div>
       </div>
     </section>` : ``}
 
-    ${c.decision === "approved" && !(c.emails||[]).some(e=>e.eventKey === "dispatched") ? `
     <section class="card">
-      <h2>Replacement action</h2>
-      <p style="color:var(--ink-soft); margin-bottom:1rem">Mark this claim as dispatched once the replacement copy is in the post. The customer will be emailed automatically.</p>
-      <div class="row">
-        <button class="btn btn-primary" data-act="dispatch">Mark as dispatched</button>
-      </div>
-    </section>` : ``}
-
-    <section class="card">
-      <h2>Customer</h2>
+      <h2>Customer <button class="btn btn-tertiary" style="padding:.2rem .5rem; font-size:.85rem; vertical-align:middle" data-act="view-customer">View full record →</button></h2>
       <dl class="summary" style="display:grid; grid-template-columns:max-content 1fr; gap:.3rem 1rem">
-        ${c.onBehalfOf ? `<dt>On behalf of</dt><dd>${escapeHtml(c.onBehalfOf)}</dd>` : ``}
-        <dt>Account</dt><dd>${escapeHtml(c.account)} — ${escapeHtml(c.accountName||"")}</dd>
+        ${c.onBehalfOf ? `<dt>Contact</dt><dd>${escapeHtml(c.onBehalfOf)}</dd>` : ``}
+        <dt>Account</dt><dd>${escapeHtml(c.account)}</dd>
+        <dt>Account name</dt><dd>${escapeHtml(c.accountName||"")}</dd>
+        <dt>Email</dt><dd>${escapeHtml((MOCK_SUBSCRIPTIONS[c.account]||{}).email || c.contactEmail || "—")}</dd>
+        <dt>Region</dt><dd>${escapeHtml(deliveryWindow(c.region || regionFor(c.account)).label)}</dd>
+        ${c.claimGroup ? `<dt>Claim group</dt><dd><a href="#" data-group="${escapeHtml(c.claimGroup)}">${escapeHtml(c.claimGroup)}</a> <span class="meta-cell">(submitted in one file)</span></dd>` : ``}
+        <dt>Assigned to</dt><dd>${c.assignee ? escapeHtml(c.assignee) : "<em>Unassigned</em>"}</dd>
       </dl>
     </section>
 
@@ -2006,18 +2562,26 @@ function renderClaimDetail(){
 
     <section class="card">
       <h2>Timeline</h2>
+      ${c.decision === "approved" ? (()=>{
+        const region = c.region || regionFor(c.account);
+        const win = deliveryWindow(region);
+        const eta = estimatedArrival(c.nextActionDate, region);
+        return `<p class="hint" style="margin-bottom:.75rem">Replacements go by standard post. For ${escapeHtml(win.label)} the delivery window is about ${win.minW}–${win.maxW} weeks. Estimated arrival is inferred from the dispatch date plus that window.</p>
+      <ul class="timeline">
+        <li data-state="done">Claim submitted<span class="when">${escapeHtml(fmtDate(c.submittedAt.slice(0,10)))}</span></li>
+        <li data-state="done">Decision made — approved<span class="when">${escapeHtml(fmtDate(c.submittedAt.slice(0,10)))}</span></li>
+        <li data-state="current">Replacement being arranged</li>
+        <li>Replacement delivered<span class="when">estimated arrival by ${escapeHtml(fmtDate(eta))} · ${win.minW}–${win.maxW} weeks, ${escapeHtml(win.label)}</span></li>
+      </ul>`;
+      })() : `
       <ul class="timeline">
         <li data-state="done">Claim submitted<span class="when">${escapeHtml(fmtDate(c.submittedAt.slice(0,10)))}</span></li>
         ${c.decision === "review"
           ? `<li data-state="current">${escapeHtml(c.nextAction)}<span class="when">by ${escapeHtml(fmtDate(c.nextActionDate))}</span></li>
              <li>Decision sent to customer<span class="when">by email</span></li>`
-          : c.decision === "approved"
-          ? `<li data-state="done">Decision made — approved<span class="when">${escapeHtml(fmtDate(c.submittedAt.slice(0,10)))}</span></li>
-             <li data-state="current">${escapeHtml(c.nextAction)}<span class="when">expected by ${escapeHtml(fmtDate(c.nextActionDate))}</span></li>
-             <li>Replacement delivered<span class="when">usually within 10 working days</span></li>`
           : `<li data-state="done">Decision made — declined<span class="when">${escapeHtml(fmtDate(c.submittedAt.slice(0,10)))}</span></li>
              <li data-state="current">${escapeHtml(c.nextAction)}<span class="when">${escapeHtml(fmtDate(c.nextActionDate))}</span></li>`}
-      </ul>
+      </ul>`}
     </section>
   `;
   view.appendChild(wrap);
@@ -2034,38 +2598,94 @@ function renderClaimDetail(){
     el.addEventListener("click", ()=> go("dashboard"));
   });
 
+  // Claim group link on claim detail customer card
+  wrap.querySelectorAll("a[data-group]").forEach(a=>{
+    a.addEventListener("click", e=>{
+      e.preventDefault();
+      state.selectedGroup = a.dataset.group;
+      go("claim-group");
+    });
+  });
+
   wrap.querySelectorAll("[data-act]").forEach(btn=>{
     btn.addEventListener("click", e=>{
       const act = e.currentTarget.dataset.act;
       let emailKey = null;
-      if(act === "approve"){
+
+      // View customer record
+      if(act === "view-customer"){
+        state.selectedAccount = c.account;
+        go("customer-record");
+        return;
+      }
+
+      // Assignment (no email; internal bookkeeping)
+      if(act === "assign"){
+        const sel = wrap.querySelector("#assignee-sel");
+        c.assignee = sel && sel.value ? sel.value : null;
+        announce(c.assignee ? `Claim assigned to ${c.assignee}.` : "Claim set to unassigned.");
+        render();
+        return;
+      }
+      if(act === "assign-me"){
+        c.assignee = CURRENT_AGENT;
+        announce(`Claim assigned to you (${CURRENT_AGENT}).`);
+        render();
+        return;
+      }
+
+      // Decline reason picker
+      if(act === "decline-open"){
+        const box = wrap.querySelector("#decline-box");
+        if(box){ box.hidden = false; const s = box.querySelector("#decline-reason"); s && s.focus(); }
+        // Close approve box if open
+        const abox = wrap.querySelector("#approve-box");
+        if(abox) abox.hidden = true;
+        return;
+      }
+      if(act === "decline-cancel"){
+        const box = wrap.querySelector("#decline-box");
+        if(box) box.hidden = true;
+        return;
+      }
+
+      // Approve confirmation
+      if(act === "approve-open"){
+        const abox = wrap.querySelector("#approve-box");
+        if(abox){ abox.hidden = false; abox.querySelector("button").focus(); }
+        // Close decline box if open
+        const dbox = wrap.querySelector("#decline-box");
+        if(dbox) dbox.hidden = true;
+        return;
+      }
+      if(act === "approve-cancel"){
+        const abox = wrap.querySelector("#approve-box");
+        if(abox) abox.hidden = true;
+        return;
+      }
+      if(act === "decline-confirm"){
+        const sel = wrap.querySelector("#decline-reason");
+        const code = sel ? sel.value : "manual";
+        c.decision = "declined";
+        c.declineCode = code;
+        c.reasonText = (DECLINE_REASONS[code] || DECLINE_REASONS.manual).text;
+        c.nextAction = "Decision made";
+        c.nextActionDate = todayPlus(0);
+        c.flag = null;
+        c.manualDecision = true;
+        emailKey = "declined";
+        announce(`Claim declined — ${declineLabel(code)}.`);
+      } else if(act === "approve-confirm"){
         c.decision = "approved";
-        c.reasonText = "Approved by reviewer. A replacement is being arranged.";
+        c.reasonText = "Approved by a team lead after a manual check. A replacement is being arranged.";
         c.nextAction = "Replacement dispatched";
         c.nextActionDate = todayPlus(3);
         c.flag = null;
+        c.declineCode = null;
+        c.autoRule = null; // manually approved
+        c.manualDecision = true;
         emailKey = "approved";
         announce("Claim approved.");
-      } else if(act === "decline"){
-        c.decision = "declined";
-        c.reasonText = "Declined by reviewer after manual check.";
-        c.nextAction = "Appeal window closes";
-        c.nextActionDate = todayPlus(30);
-        c.flag = null;
-        emailKey = "declined";
-        announce("Claim declined.");
-      } else if(act === "ask"){
-        c.reasonText = "Waiting for the customer to provide additional information.";
-        c.nextAction = "Awaiting customer reply";
-        c.nextActionDate = todayPlus(7);
-        c.flag = "awaiting";
-        emailKey = "awaiting";
-        announce("Customer has been emailed for more information.");
-      } else if(act === "dispatch"){
-        c.nextAction = "Replacement delivered";
-        c.nextActionDate = todayPlus(10);
-        emailKey = "dispatched";
-        announce("Marked as dispatched. Customer has been emailed.");
       }
       if(emailKey && state.autoEmail){
         const sent = sendEmail(c, emailKey, {auto:true});
@@ -2073,6 +2693,184 @@ function renderClaimDetail(){
       }
       render();
     });
+  });
+}
+
+/* ---------- 0c. Claim group drill-down ---------- */
+function renderClaimGroup(){
+  const groupRef = state.selectedGroup;
+  const groupClaims = CLAIMS_STORE.items.filter(c => c.claimGroup === groupRef)
+    .sort((a,b)=> b.submittedAt.localeCompare(a.submittedAt));
+
+  setCrumbs([
+    {label:"Dashboard", go:"dashboard"},
+    {label:"Group " + groupRef}
+  ]);
+  setStepbar(null);
+
+  if(!groupClaims.length){
+    const card = document.createElement("section");
+    card.className = "card";
+    card.innerHTML = `<h1>Group ${escapeHtml(groupRef)}</h1><p>No claims found in this group.</p>
+      <button class="btn btn-secondary" data-go="dashboard">← Dashboard</button>`;
+    view.appendChild(card);
+    card.querySelector("[data-go=dashboard]").addEventListener("click", ()=> go("dashboard"));
+    return;
+  }
+
+  const approved = groupClaims.filter(c=>c.decision==="approved").length;
+  const review   = groupClaims.filter(c=>c.decision==="review").length;
+  const declined = groupClaims.filter(c=>c.decision==="declined").length;
+  const firstClaim = groupClaims[groupClaims.length - 1];
+  const statusLabels = { approved:"Approved", review:"Needs review", declined:"Declined" };
+
+  const wrap = document.createElement("div");
+  wrap.className = "stack";
+  wrap.innerHTML = `
+    <section class="card">
+      <div class="row split" style="align-items:flex-start; gap:1rem; flex-wrap:wrap">
+        <div>
+          <h1 style="margin-bottom:.2rem">Claim group ${escapeHtml(groupRef)}</h1>
+          <p style="color:var(--ink-soft); margin-bottom:.75rem">${groupClaims.length} claims submitted together · ${escapeHtml(firstClaim.accountName||firstClaim.account)}</p>
+          <div class="row" style="gap:.5rem; flex-wrap:wrap">
+            ${approved ? `<span class="badge" data-state="approved"><span class="dot" aria-hidden="true"></span>${approved} approved</span>` : ''}
+            ${review   ? `<span class="badge" data-state="review"><span class="dot" aria-hidden="true"></span>${review} needs review</span>` : ''}
+            ${declined ? `<span class="badge" data-state="declined"><span class="dot" aria-hidden="true"></span>${declined} declined</span>` : ''}
+          </div>
+        </div>
+        <button class="btn btn-tertiary" data-go="dashboard">← Dashboard</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Claims in this group</h2>
+      <p style="color:var(--ink-soft); margin-bottom:1rem">Click any claim to open its full detail.</p>
+      <div class="claims-table-wrap">
+        <table class="claims-table">
+          <thead>
+            <tr>
+              <th scope="col">Reference</th>
+              <th scope="col">Journal &amp; issue</th>
+              <th scope="col">Status</th>
+              <th scope="col">Processing status</th>
+              <th scope="col">Assigned to</th>
+              <th scope="col">Submitted</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${groupClaims.map(c => {
+              const issuesText = c.issues.length === 1
+                ? `Vol ${escapeHtml(c.issues[0].volume)}, no. ${escapeHtml(c.issues[0].number)}`
+                : `${c.issues.length} issues`;
+              return `<tr data-ref="${escapeHtml(c.ref)}" tabindex="0">
+                <td data-label="Reference"><a href="#" class="row-link ref-cell" data-ref="${escapeHtml(c.ref)}">${escapeHtml(c.ref)}</a></td>
+                <td data-label="Journal &amp; issue"><div>${escapeHtml(c.journal)}</div><div class="meta-cell">${issuesText}</div></td>
+                <td data-label="Status"><span class="badge" data-state="${c.decision}"><span class="dot" aria-hidden="true"></span>${statusLabels[c.decision]||c.decision}</span></td>
+                <td data-label="Processing status">${procPill(c)||'<span class="meta-cell">—</span>'}</td>
+                <td data-label="Assigned to">${c.assignee ? escapeHtml(c.assignee) : '<em class="meta-cell">Unassigned</em>'}</td>
+                <td data-label="Submitted">${escapeHtml(fmtDate(c.submittedAt.slice(0,10)))}</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+  view.appendChild(wrap);
+
+  wrap.querySelector("[data-go=dashboard]").addEventListener("click", ()=> go("dashboard"));
+  wrap.querySelectorAll("tr[data-ref]").forEach(tr=>{
+    const open = ()=>{ state.selectedRef = tr.dataset.ref; go("claim-detail"); };
+    tr.addEventListener("click", e=>{ if(!e.target.closest("a,button")) open(); });
+    tr.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); open(); } });
+    const a = tr.querySelector("a.row-link");
+    a && a.addEventListener("click", e=>{ e.preventDefault(); state.selectedRef = a.dataset.ref; go("claim-detail"); });
+  });
+}
+
+/* ---------- 0d. Customer / org record ---------- */
+function renderCustomerRecord(){
+  const accountId = state.selectedAccount;
+  const sub = MOCK_SUBSCRIPTIONS[accountId];
+  const allClaims = CLAIMS_STORE.items.filter(c => c.account === accountId)
+    .sort((a,b)=> b.submittedAt.localeCompare(a.submittedAt));
+
+  setCrumbs([
+    {label:"Dashboard", go:"dashboard"},
+    {label: sub ? sub.name : accountId}
+  ]);
+  setStepbar(null);
+
+  const approved = allClaims.filter(c=>c.decision==="approved").length;
+  const review   = allClaims.filter(c=>c.decision==="review").length;
+  const declined = allClaims.filter(c=>c.decision==="declined").length;
+  const statusLabels = { approved:"Approved", review:"Needs review", declined:"Declined" };
+
+  const wrap = document.createElement("div");
+  wrap.className = "stack";
+  wrap.innerHTML = `
+    <section class="card">
+      <div class="row split" style="align-items:flex-start; gap:1rem; flex-wrap:wrap">
+        <div>
+          <h1 style="margin-bottom:.2rem">${escapeHtml(sub ? sub.name : accountId)}</h1>
+          <p style="color:var(--ink-soft); margin-bottom:.5rem">${escapeHtml(accountId)}${sub ? ` · ${escapeHtml(sub.email)}` : ''}</p>
+          ${sub ? `<p style="margin-bottom:.5rem; color:var(--ink-soft)">Region: ${escapeHtml(deliveryWindow(sub.region||'row').label)} · Subscription: ${sub.active ? '<strong style="color:var(--ok)">Active</strong>' : '<strong style="color:var(--no)">No print component</strong>'}</p>` : ''}
+          <div class="row" style="gap:.5rem; flex-wrap:wrap; margin-top:.5rem">
+            <span style="font-family:-apple-system,sans-serif; font-size:.9rem; color:var(--ink-soft)">${allClaims.length} total claims</span>
+            ${approved ? `<span class="badge" data-state="approved"><span class="dot" aria-hidden="true"></span>${approved} approved</span>` : ''}
+            ${review   ? `<span class="badge" data-state="review"><span class="dot" aria-hidden="true"></span>${review} needs review</span>` : ''}
+            ${declined ? `<span class="badge" data-state="declined"><span class="dot" aria-hidden="true"></span>${declined} declined</span>` : ''}
+          </div>
+          ${declined >= 3 ? `<div class="notice" style="margin-top:1rem; border-left-color:var(--no); background:var(--no-bg)"><span class="ui" style="color:var(--no)">High decline rate</span>This account has ${declined} declined claims. You may want to review recent activity before processing new claims.</div>` : ''}
+        </div>
+        <button class="btn btn-tertiary" data-go="dashboard">← Dashboard</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>All claims for this account</h2>
+      <p style="color:var(--ink-soft); margin-bottom:1rem">Full history — click any claim to open it.</p>
+      ${allClaims.length ? `
+      <div class="claims-table-wrap">
+        <table class="claims-table">
+          <thead>
+            <tr>
+              <th scope="col">Reference</th>
+              <th scope="col">Journal &amp; issue</th>
+              <th scope="col">Status</th>
+              <th scope="col">Processing status</th>
+              <th scope="col">Reject reason</th>
+              <th scope="col">Submitted</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${allClaims.map(c => {
+              const issuesText = c.issues.length === 1
+                ? `Vol ${escapeHtml(c.issues[0].volume)}, no. ${escapeHtml(c.issues[0].number)}`
+                : `${c.issues.length} issues`;
+              return `<tr data-ref="${escapeHtml(c.ref)}" tabindex="0">
+                <td data-label="Reference"><a href="#" class="row-link ref-cell" data-ref="${escapeHtml(c.ref)}">${escapeHtml(c.ref)}</a></td>
+                <td data-label="Journal &amp; issue"><div>${escapeHtml(c.journal)}</div><div class="meta-cell">${issuesText}</div></td>
+                <td data-label="Status"><span class="badge" data-state="${c.decision}"><span class="dot" aria-hidden="true"></span>${statusLabels[c.decision]||c.decision}</span></td>
+                <td data-label="Processing status">${procPill(c)||'<span class="meta-cell">—</span>'}</td>
+                <td data-label="Reject reason">${c.declineCode ? escapeHtml(declineLabel(c.declineCode)) : '<span class="meta-cell">—</span>'}</td>
+                <td data-label="Submitted">${escapeHtml(fmtDate(c.submittedAt.slice(0,10)))}</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>` : `<p style="color:var(--ink-soft)">No claims found for this account.</p>`}
+    </section>
+  `;
+  view.appendChild(wrap);
+
+  wrap.querySelector("[data-go=dashboard]").addEventListener("click", ()=> go("dashboard"));
+  wrap.querySelectorAll("tr[data-ref]").forEach(tr=>{
+    const open = ()=>{ state.selectedRef = tr.dataset.ref; go("claim-detail"); };
+    tr.addEventListener("click", e=>{ if(!e.target.closest("a,button")) open(); });
+    tr.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); open(); } });
+    const a = tr.querySelector("a.row-link");
+    a && a.addEventListener("click", e=>{ e.preventDefault(); state.selectedRef = a.dataset.ref; go("claim-detail"); });
   });
 }
 
@@ -2086,19 +2884,149 @@ function renderClaimDetail(){
 
 function mgrTabs(active){
   return `
-    <nav class="mgr-tabs" aria-label="Claims manager sections">
-      <a href="#" data-go="mgr-overview"      class="${active==='overview'?'is-active':''}" ${active==='overview'?'aria-current="page"':''}>Overview</a>
-      <a href="#" data-go="mgr-rules"         class="${active==='rules'?'is-active':''}" ${active==='rules'?'aria-current="page"':''}>Rules</a>
-      <a href="#" data-go="mgr-auto-approved" class="${active==='auto'?'is-active':''}" ${active==='auto'?'aria-current="page"':''}>Auto-approved</a>
+    <nav class="mgr-tabs" aria-label="Team lead sections">
+      <a href="#" data-go="dashboard"    class="${active==='claims'?'is-active':''}"   ${active==='claims'?'aria-current="page"':''}>Claims</a>
+      <a href="#" data-go="mgr-overview" class="${active==='overview'?'is-active':''}" ${active==='overview'?'aria-current="page"':''}>Reporting</a>
+      <a href="#" data-go="mgr-rules"    class="${active==='rules'?'is-active':''}"    ${active==='rules'?'aria-current="page"':''}>Automations</a>
     </nav>`;
 }
 
-/* ---------- Overview (charts + KPIs) ---------- */
-function renderMgrOverview(){
-  setCrumbs([{label:"Manager overview"}]);
+/* ---------- Approvals pending (manual approvals queue) ---------- */
+function renderMgrPending(){
+  setCrumbs([{label:"Approvals pending"}]);
   setStepbar(null);
 
-  const items = CLAIMS_STORE.items;
+  const rows = CLAIMS_STORE.items
+    .filter(c => c.decision === "review")
+    .sort((a,b)=> b.submittedAt.localeCompare(a.submittedAt));
+
+  const reasonLabels = {
+    not_received:"The issue didn't arrive", damaged:"It arrived damaged",
+    wrong_issue:"The wrong issue was sent", incomplete:"Incomplete — pages missing", other:"Something else"
+  };
+
+  const wrap = document.createElement("div");
+  wrap.className = "stack";
+  wrap.innerHTML = `
+    <div class="mgr-hero">
+      <div>
+        <h1>Approvals pending</h1>
+        <p class="lede">Claims held for a manual decision. These are repeat claims — a second or third replacement copy for the same issue. Open one to review it, or select several and approve them together.</p>
+      </div>
+    </div>
+    ${mgrTabs('pending')}
+    ${rows.length ? `
+    <div class="bulk-bar" role="group" aria-label="Bulk actions">
+      <label class="bulk-check"><input type="checkbox" id="bulk-all" aria-label="Select all pending claims"> Select all</label>
+      <span id="bulk-count" class="meta-cell" aria-live="polite">0 selected</span>
+      <button class="btn btn-primary" id="bulk-approve" disabled>Approve selected</button>
+    </div>
+    <div class="claims-table-wrap">
+      <table class="claims-table">
+        <thead>
+          <tr>
+            <th scope="col" class="col-check"><span class="sr-only">Select</span></th>
+            <th scope="col">Reference</th>
+            <th scope="col">Account</th>
+            <th scope="col">Journal &amp; issue</th>
+            <th scope="col">Why it's held</th>
+            <th scope="col">Submitted</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(c=>`
+            <tr data-ref="${escapeHtml(c.ref)}" tabindex="0">
+              <td data-label="Select" class="col-check"><input type="checkbox" class="bulk-row" data-ref="${escapeHtml(c.ref)}" aria-label="Select claim ${escapeHtml(c.ref)}"></td>
+              <td data-label="Reference"><a href="#" class="row-link ref-cell" data-ref="${escapeHtml(c.ref)}">${escapeHtml(c.ref)}</a> <span class="flag" data-flag="repeat">Repeat claim</span></td>
+              <td data-label="Account"><div>${escapeHtml(c.accountName||"")}</div><div class="meta-cell">${escapeHtml(c.account)}</div></td>
+              <td data-label="Journal & issue"><div>${escapeHtml(c.journal)}</div><div class="meta-cell">${c.issues.length===1?`Vol ${escapeHtml(c.issues[0].volume)}, no. ${escapeHtml(c.issues[0].number)}`:`${c.issues.length} issues`}</div></td>
+              <td data-label="Why it's held"><div class="meta-cell">${escapeHtml(c.reasonText)}</div></td>
+              <td data-label="Submitted"><div>${escapeHtml(fmtDate(c.submittedAt.slice(0,10)))}</div><div class="meta-cell">${escapeHtml(c.submittedBy||"")}</div></td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>` : `<div class="claims-table-wrap"><div class="empty">Nothing waiting for approval. Repeat claims appear here.</div></div>`}
+  `;
+  view.appendChild(wrap);
+
+  // Bulk selection
+  const rowChecks = () => Array.from(wrap.querySelectorAll(".bulk-row"));
+  const selected = () => rowChecks().filter(cb=>cb.checked).map(cb=>cb.dataset.ref);
+  function refreshBulk(){
+    const sel = selected();
+    const cnt = wrap.querySelector("#bulk-count");
+    const btn = wrap.querySelector("#bulk-approve");
+    const all = wrap.querySelector("#bulk-all");
+    if(cnt) cnt.textContent = `${sel.length} selected`;
+    if(btn) btn.disabled = sel.length === 0;
+    if(all){
+      const boxes = rowChecks();
+      all.checked = boxes.length > 0 && sel.length === boxes.length;
+      all.indeterminate = sel.length > 0 && sel.length < boxes.length;
+    }
+  }
+  wrap.querySelectorAll(".bulk-row").forEach(cb=> cb.addEventListener("change", refreshBulk));
+  const bulkAll = wrap.querySelector("#bulk-all");
+  bulkAll && bulkAll.addEventListener("change", e=>{
+    rowChecks().forEach(cb=> cb.checked = e.target.checked);
+    refreshBulk();
+  });
+  const bulkApprove = wrap.querySelector("#bulk-approve");
+  bulkApprove && bulkApprove.addEventListener("click", ()=>{
+    const refs = selected();
+    if(!refs.length) return;
+    let n = 0;
+    refs.forEach(ref=>{
+      const c = findClaim(ref);
+      if(!c || c.decision !== "review") return;
+      c.decision = "approved";
+      c.reasonText = "Approved by a team lead in a bulk action. A replacement is being arranged.";
+      c.nextAction = "Replacement dispatched";
+      c.nextActionDate = todayPlus(3);
+      c.flag = null;
+      c.declineCode = null;
+      c.autoRule = null;
+      if(state.autoEmail) sendEmail(c, "approved", {auto:true});
+      n++;
+    });
+    announce(`${n} claim${n===1?"":"s"} approved.`);
+    render();
+  });
+
+  wrap.querySelectorAll("tr[data-ref]").forEach(tr=>{
+    const open = ()=>{ state.selectedRef = tr.dataset.ref; go("claim-detail"); };
+    tr.addEventListener("click", e=>{ if(!e.target.closest("a") && !e.target.closest("input")) open(); });
+    tr.addEventListener("keydown", e=>{ if((e.key==="Enter"||e.key===" ") && !e.target.closest("input")){ e.preventDefault(); open(); } });
+    const a = tr.querySelector("a.row-link");
+    a && a.addEventListener("click", e=>{ e.preventDefault(); state.selectedRef = a.dataset.ref; go("claim-detail"); });
+  });
+}
+
+/* ---------- Overview (charts + KPIs) ---------- */
+const repFilter = { from:"", to:"", journal:"", customer:"" };
+function repApply(list){
+  return list.filter(c=>{
+    if(repFilter.from && c.submittedAt.slice(0,10) < repFilter.from) return false;
+    if(repFilter.to && c.submittedAt.slice(0,10) > repFilter.to) return false;
+    if(repFilter.journal && c.journal !== repFilter.journal) return false;
+    if(repFilter.customer){
+      const q = repFilter.customer.toLowerCase().trim();
+      if(!(c.account.toLowerCase().includes(q) || (c.accountName||"").toLowerCase().includes(q))) return false;
+    }
+    return true;
+  });
+}
+function repActive(){
+  return !!(repFilter.from || repFilter.to || repFilter.journal || repFilter.customer);
+}
+function renderMgrOverview(){
+  setCrumbs([
+    {label:"Dashboard", go:"dashboard"},
+    {label:"Reporting"}
+  ]);
+  setStepbar(null);
+
+  const items = repApply(CLAIMS_STORE.items);
   const total = items.length;
   const auto  = items.filter(c=>c.autoRule).length;
   const review = items.filter(c=>c.decision==="review").length;
@@ -2114,12 +3042,38 @@ function renderMgrOverview(){
   wrap.innerHTML = `
     <div class="mgr-hero">
       <div>
-        <h1>Claims manager overview</h1>
-        <p class="lede">Six-month view of claims volume, outcomes, and rules-engine activity.</p>
+        <h1>Reporting</h1>
+        <p class="lede">Six-month view of claims volume, outcomes, and rules-engine activity.${repActive() ? ` <strong>Filtered:</strong> ${total.toLocaleString()} claim${total===1?"":"s"} match.` : ""}</p>
       </div>
     </div>
 
     ${mgrTabs('overview')}
+
+    <div class="filters" role="group" aria-label="Filter reporting">
+      <div class="field" style="flex:0 0 auto">
+        <label for="rep-from">From</label>
+        <input type="date" id="rep-from" value="${escapeHtml(repFilter.from)}">
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <label for="rep-to">To</label>
+        <input type="date" id="rep-to" value="${escapeHtml(repFilter.to)}">
+      </div>
+      <div class="field" style="flex:1 1 14rem; min-width:0">
+        <label for="rep-journal">Journal title</label>
+        <select id="rep-journal">
+          <option value="">All journals</option>
+          ${MOCK_JOURNALS.map(j=>`<option value="${escapeHtml(j)}" ${repFilter.journal===j?'selected':''}>${escapeHtml(j)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field" style="flex:1 1 12rem; min-width:0">
+        <label for="rep-customer">Customer number</label>
+        <input type="text" id="rep-customer" placeholder="e.g. INST-100245" value="${escapeHtml(repFilter.customer)}" autocomplete="off">
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <span class="lbl" aria-hidden="true">&nbsp;</span>
+        <button type="button" class="btn btn-tertiary" id="rep-clear">Clear filters</button>
+      </div>
+    </div>
 
     <div class="kpis" role="group" aria-label="Key metrics">
       <div class="kpi">
@@ -2138,7 +3092,7 @@ function renderMgrOverview(){
         <span class="kpi-sub">awaiting a human decision</span>
       </div>
       <div class="kpi">
-        <span class="kpi-n" style="color:var(--no)">${Math.round((declined/total)*100)}%</span>
+        <span class="kpi-n" style="color:var(--no)">${total ? Math.round((declined/total)*100) : 0}%</span>
         <span class="kpi-lbl">Decline rate</span>
         <span class="kpi-sub">${declined.toLocaleString()} declined</span>
       </div>
@@ -2170,7 +3124,7 @@ function renderMgrOverview(){
       <section class="card chart-card">
         <header class="chart-head">
           <h2>Auto-approvals by rule</h2>
-          <p>Which fast-track rules are doing the work.</p>
+          <p>Which administrator rules are doing the work.</p>
         </header>
         <div class="chart-wrap" id="chart-rules"></div>
       </section>
@@ -2186,18 +3140,41 @@ function renderMgrOverview(){
   `;
   view.appendChild(wrap);
 
+  // Reporting filter wiring
+  const repFrom = wrap.querySelector("#rep-from");
+  const repTo = wrap.querySelector("#rep-to");
+  const repJournal = wrap.querySelector("#rep-journal");
+  const repCustomer = wrap.querySelector("#rep-customer");
+  const repClear = wrap.querySelector("#rep-clear");
+  repFrom && repFrom.addEventListener("change", e=>{ repFilter.from = e.target.value; render(); });
+  repTo && repTo.addEventListener("change", e=>{ repFilter.to = e.target.value; render(); });
+  repJournal && repJournal.addEventListener("change", e=>{ repFilter.journal = e.target.value; render(); });
+  repCustomer && repCustomer.addEventListener("change", e=>{ repFilter.customer = e.target.value; render(); });
+  repClear && repClear.addEventListener("click", ()=>{
+    repFilter.from = repFilter.to = repFilter.journal = repFilter.customer = "";
+    announce("Reporting filters cleared.");
+    render();
+  });
+
   // Charts
+  if(total === 0){
+    ["#chart-trend","#chart-donut","#chart-rules","#chart-decline"].forEach(sel=>{
+      const host = wrap.querySelector(sel);
+      if(host) host.innerHTML = `<div class="empty">No claims match these filters.</div>`;
+    });
+    return;
+  }
   paintTrendChart(wrap.querySelector("#chart-trend"), items);
   paintDonutChart(wrap.querySelector("#chart-donut"), {approved, auto, review, declined});
   paintRulesChart(wrap.querySelector("#chart-rules"), items);
   paintDeclineChart(wrap.querySelector("#chart-decline"), items);
 }
 
-/* ---------- Rules editor ---------- */
+/* ---------- Administration (rules editor) ---------- */
 function renderMgrRules(){
   setCrumbs([
-    {label:"Overview", go:"mgr-overview"},
-    {label:"Rules"}
+    {label:"Dashboard", go:"dashboard"},
+    {label:"Automations"}
   ]);
   setStepbar(null);
 
@@ -2221,15 +3198,15 @@ function renderMgrRules(){
   wrap.innerHTML = `
     <div class="mgr-hero">
       <div>
-        <h1>Fast-track rules</h1>
-        <p class="lede">Auto-approve claims that match a trusted persona, bypassing manual validation. Rules run in the order shown, top to bottom — the first match wins. Scope limits keep risk contained.</p>
+        <h1>Automations</h1>
+        <p class="lede">Standard, policy-compliant claims auto-approve by default. The rules below are <em>example</em> exception rules an administrator could configure to auto-approve specific accounts even where a manual check might otherwise apply. They're all switched <strong>off</strong> right now and kept here as templates — turn one on to see it fast-track new claims. The impact counts show what each rule did across the seeded six months of history.</p>
       </div>
     </div>
 
     ${mgrTabs('rules')}
 
     <div class="open-q">
-      <strong>How this works:</strong> When a claim is submitted, the engine checks each enabled rule. If the claimant matches a persona <em>and</em> the claim fits the scope (number of issues, allowed reasons, within the time window), it's auto-approved on the spot. Auto-approved claims still appear in the dashboards and trigger the same emails — they just skip the queue.
+      <strong>How this works:</strong> When a claim is submitted it's checked against the claims policy. If the account also matches an enabled administrator rule <em>and</em> the claim fits the rule's scope, it's auto-approved on the spot instead of being held. These are configured by an administrator — the set below is illustrative, not final, and off by default.
     </div>
 
     <div class="rules-list">
@@ -2266,7 +3243,7 @@ function renderMgrRules(){
     </div>
 
     <div class="open-q" style="margin-top:1rem">
-      <strong>Open question:</strong> Should managers be able to add new rules from this screen, or should new personas require engineering work? Adding rules from the UI sounds nice but introduces audit-trail and testing complexity.
+      <strong>Open question:</strong> Which exception rules (if any) do we actually want at launch, and who can edit them? These examples are placeholders for that conversation.
     </div>
   `;
   view.appendChild(wrap);
@@ -2293,7 +3270,6 @@ function renderMgrRules(){
 /* ---------- Auto-approved feed ---------- */
 function renderMgrAutoApproved(){
   setCrumbs([
-    {label:"Overview", go:"mgr-overview"},
     {label:"Auto-approved"}
   ]);
   setStepbar(null);
@@ -2539,9 +3515,11 @@ function paintDeclineChart(host, items){
   declined.forEach(c => {
     // Cluster by first few words of reasonText
     let key = c.reasonText;
-    if(/wasn't active/.test(key))   key = "Subscription wasn't active";
-    else if(/outside the 90-day/.test(key)) key = "Outside the 90-day window";
-    else if(/already a claim on file/.test(key)) key = "Duplicate of existing claim";
+    if(/print component/.test(key))            key = "No print subscription";
+    else if(/six-month/.test(key))             key = "Outside six-month window";
+    else if(/too early|in transit|delivery window/.test(key)) key = "Too early / in transit";
+    else if(/not yet been published|haven't been published|not yet published/.test(key)) key = "Issue not yet published";
+    else if(/claim limit|three replacement|repurchase/.test(key)) key = "Claim limit reached";
     else key = "Other";
     groups[key] = (groups[key]||0) + 1;
   });
@@ -2595,7 +3573,7 @@ function renderLanding(){
             <li>The wrong issue was sent.</li>
             <li>Pages or sections are missing from the issue.</li>
           </ul>
-          <p>Claims must be made within <strong>90 days</strong> of the issue's publication date. Your subscription must have been active when the issue was published.</p>
+          <p>Claims must be made within <strong>six months</strong> of the issue's publication date, and the account must subscribe to the print component of the journal. It's also too early to claim while an issue is still within the expected delivery window for your region.</p>
         </div>
       </details>
 
@@ -2619,6 +3597,7 @@ function renderLanding(){
             <li><strong>Needs a closer look</strong> — a colleague reviews it; we'll email you within two working days.</li>
             <li><strong>Declined</strong> — we'll tell you why and what you can do next.</li>
           </ul>
+          <p class="hint">"Tracking" a claim here means seeing its status (received, decision, replacement sent) — not parcel tracking. Replacements go by standard post; please allow four to six weeks (six to eight for Asia-Pacific).</p>
         </div>
       </details>
     </section>
@@ -2646,43 +3625,51 @@ function renderSub(){
   card.className = "card";
   card.innerHTML = `
     <h1>Step 1 of 5 — Find the subscription</h1>
-    <p>Enter the account number or email used for the subscription, then pick the journal.</p>
+    <p>Identify the subscription by end-user account number or PO number, then pick the journal.</p>
+
+    ${isInternal ? `
+    <details class="acc" style="margin-bottom:1rem">
+      <summary>Upload a CSV of claims (bulk)</summary>
+      <div class="acc-body">
+        <p>For agents or large batches, upload a spreadsheet with one row per claim. Each row is validated against policy; you'll get a single batch reference and one consolidated confirmation email rather than one per row.</p>
+        <p class="hint">Expected columns: <code>account</code>, <code>journal</code>, <code>volume</code>, <code>issue</code>, <code>reason</code>, <code>email</code>. Header row optional.</p>
+        <input type="file" id="csv-file" accept=".csv,text/csv">
+        <div id="csv-status" class="meta" style="margin-top:.4rem; font-size:.9rem; color:var(--ink-soft)"></div>
+        <div class="open-q"><strong>Open question:</strong> In production this would run through the same batch process as the bulk-upload tool, with A2R look-ups filling missing ship-to / product details.</div>
+      </div>
+    </details>
+    ` : ``}
 
     <form id="form-sub" aria-label="Find the subscription" novalidate>
       ${isInternal ? `
         <fieldset class="field">
           <legend>Submitting on behalf of</legend>
-          <label for="onbehalf" class="lbl">Customer name or email</label>
-          <span class="hint">You're submitting this for someone who contacted us. Their name appears on the claim record.</span>
-          <input type="text" id="onbehalf" name="onbehalf" autocomplete="off"
-            value="${escapeHtml(d.onBehalfOf)}" aria-describedby="onbehalf-hint">
+          <label for="onbehalf" class="lbl">Customer email</label>
+          <span class="hint">The email we'll send the confirmation to. (We don't capture customer name — formats vary too much to be useful.)</span>
+          <input type="email" id="onbehalf" name="onbehalf" autocomplete="off"
+            value="${escapeHtml(d.onBehalfOf)}">
         </fieldset>
       ` : ``}
 
       <div class="field">
-        <label for="account">Account number or email <span aria-hidden="true">*</span></label>
-        <span class="hint" id="account-hint">For example: INST-100245 or library@westhaven.ac.uk. Try <code>INST-100245</code>, <code>INST-204918</code>, or <code>INST-310007</code>.</span>
-        <input type="text" id="account" name="account" required autocomplete="off"
-          aria-describedby="account-hint ${d.errors.account ? 'account-err' : ''}"
-          aria-invalid="${!!d.errors.account}"
-          value="${escapeHtml(d.account)}">
-        ${d.errors.account ? `<span class="err" id="account-err">${d.errors.account}</span>` : ``}
-        <div id="account-resolved" class="meta" style="margin-top:.3rem; font-size:.9rem; color:var(--ink-soft)"></div>
+        <label for="id-type">Find the subscription by <span aria-hidden="true">*</span></label>
+        <select id="id-type" name="id-type">
+          <option value="account" ${d.idType!=='po'?'selected':''}>End-user account number</option>
+          <option value="po" ${d.idType==='po'?'selected':''}>PO number</option>
+        </select>
       </div>
 
+      <div class="field" id="sub-field"></div>
+
       <div class="field">
-        <label for="journal">Journal title <span aria-hidden="true">*</span></label>
-        <span class="hint">Start typing to search. We'll show matches.</span>
-        <input type="text" id="journal" name="journal" list="journal-list"
-          autocomplete="off"
-          aria-describedby="${d.errors.journal ? 'journal-err' : ''}"
-          aria-invalid="${!!d.errors.journal}"
-          value="${escapeHtml(d.journal)}">
-        <datalist id="journal-list">
-          ${MOCK_JOURNALS.map(j=>`<option value="${escapeHtml(j)}"></option>`).join("")}
-        </datalist>
-        ${d.errors.journal ? `<span class="err" id="journal-err">${d.errors.journal}</span>` : ``}
+        <label for="journal-by">Find journal by <span aria-hidden="true">*</span></label>
+        <select id="journal-by" name="journal-by">
+          <option value="title" ${d.journalBy!=='code'?'selected':''}>Journal title</option>
+          <option value="code" ${d.journalBy==='code'?'selected':''}>L/J code</option>
+        </select>
       </div>
+
+      <div class="field" id="journal-field"></div>
 
       <div class="row" style="margin-top:1.5rem">
         <button type="button" class="btn btn-secondary" data-go="landing">Back</button>
@@ -2692,29 +3679,129 @@ function renderSub(){
   `;
   view.appendChild(card);
 
-  const accountInput = card.querySelector("#account");
-  accountInput.addEventListener("input", e=>{
-    const v = e.target.value.trim();
-    const sub = MOCK_SUBSCRIPTIONS[v] || Object.values(MOCK_SUBSCRIPTIONS).find(s=>s.email===v.toLowerCase());
-    const out = card.querySelector("#account-resolved");
-    if(sub){
-      out.textContent = "Found: " + sub.name + (sub.active ? "" : " — inactive subscription");
-    } else if(v.length > 3){
-      out.textContent = "No subscription matches yet — keep typing.";
-    } else { out.textContent = ""; }
+  // ----- Subscription identifier field: account vs PO, exposed dynamically -----
+  const subField = card.querySelector("#sub-field");
+  function paintSubField(){
+    const isPo = state.data.idType === "po";
+    subField.innerHTML = `
+      <label for="account" id="account-label">${isPo ? 'PO number' : 'End-user account number'} <span aria-hidden="true">*</span></label>
+      <span class="hint" id="account-hint">${isPo
+        ? 'Enter the purchase-order number from the customer order, e.g. <code>PO-44120</code>.'
+        : 'Try <code>INST-100245</code>, <code>INST-204918</code>, or <code>INST-310007</code> for the demo.'}</span>
+      <input type="text" id="account" name="account" required autocomplete="off"
+        aria-describedby="account-hint ${d.errors.account ? 'account-err' : ''}"
+        aria-invalid="${!!d.errors.account}"
+        placeholder="${isPo ? 'PO-44120' : 'INST-100245'}"
+        value="${escapeHtml(d.account)}">
+      ${d.errors.account ? `<span class="err" id="account-err">${d.errors.account}</span>` : ``}
+      <div id="account-resolved" class="meta" style="margin-top:.3rem; font-size:.9rem; color:var(--ink-soft)"></div>
+    `;
+    const accountInput = subField.querySelector("#account");
+    accountInput.addEventListener("input", e=>{
+      d.account = e.target.value;
+      const v = e.target.value.trim();
+      const sub = MOCK_SUBSCRIPTIONS[v] || Object.values(MOCK_SUBSCRIPTIONS).find(s=>s.email===v.toLowerCase());
+      const out = subField.querySelector("#account-resolved");
+      if(sub){
+        out.textContent = "Found: " + sub.name + (sub.active ? "" : " — no print component on this account");
+      } else if(v.length > 3){
+        out.textContent = state.data.idType === "po" ? "No subscription matches that PO yet — keep typing." : "No subscription matches yet — keep typing.";
+      } else { out.textContent = ""; }
+    });
+    accountInput.dispatchEvent(new Event("input"));
+  }
+  paintSubField();
+
+  const idType = card.querySelector("#id-type");
+  idType && idType.addEventListener("change", e=>{
+    state.data.idType = e.target.value;
+    paintSubField();
   });
-  accountInput.dispatchEvent(new Event("input"));
+
+  // ----- Journal field: title (datalist) vs code, exposed dynamically -----
+  const journalField = card.querySelector("#journal-field");
+  function paintJournalField(){
+    const byCode = state.data.journalBy === "code";
+    if(byCode){
+      journalField.innerHTML = `
+        <label for="journal-code">L/J code <span aria-hidden="true">*</span></label>
+        <span class="hint">Enter the L/J code for the journal, e.g. <code>L441</code> or <code>J572</code>.</span>
+        <input type="text" id="journal-code" name="journal-code" autocomplete="off"
+          aria-describedby="${d.errors.journal ? 'journal-err' : ''}"
+          aria-invalid="${!!d.errors.journal}"
+          placeholder="L441"
+          value="${escapeHtml(d.journalCode)}">
+        ${d.errors.journal ? `<span class="err" id="journal-err">${d.errors.journal}</span>` : ``}
+        <div id="journal-resolved" class="meta" style="margin-top:.3rem; font-size:.9rem; color:var(--ink-soft)"></div>
+      `;
+      const codeInput = journalField.querySelector("#journal-code");
+      codeInput.addEventListener("input", e=>{
+        d.journalCode = e.target.value;
+        const j = journalByCode(e.target.value);
+        d.journal = j;
+        const out = journalField.querySelector("#journal-resolved");
+        out.textContent = j ? "Matched: " + j : (e.target.value.trim().length >= 2 ? "No journal matches that code yet." : "");
+      });
+      codeInput.dispatchEvent(new Event("input"));
+    } else {
+      journalField.innerHTML = `
+        <label for="journal">Journal title <span aria-hidden="true">*</span></label>
+        <span class="hint">Pick from the list. We need the journal even when a PO is given, since a PO can occasionally span more than one journal.</span>
+        <input type="text" id="journal" name="journal" list="journal-list"
+          autocomplete="off"
+          aria-describedby="${d.errors.journal ? 'journal-err' : ''}"
+          aria-invalid="${!!d.errors.journal}"
+          value="${escapeHtml(d.journal)}">
+        <datalist id="journal-list">
+          ${MOCK_JOURNALS.map(j=>`<option value="${escapeHtml(j)}"></option>`).join("")}
+        </datalist>
+        ${d.errors.journal ? `<span class="err" id="journal-err">${d.errors.journal}</span>` : ``}
+      `;
+      const titleInput = journalField.querySelector("#journal");
+      titleInput.addEventListener("input", e=>{ d.journal = e.target.value; });
+    }
+  }
+  paintJournalField();
+
+  const journalBy = card.querySelector("#journal-by");
+  journalBy && journalBy.addEventListener("change", e=>{
+    state.data.journalBy = e.target.value;
+    paintJournalField();
+  });
+
+  // CSV bulk upload (internal only)
+  const csvFile = card.querySelector("#csv-file");
+  csvFile && csvFile.addEventListener("change", e=>{
+    const f = e.target.files[0];
+    if(!f) return;
+    const status = card.querySelector("#csv-status");
+    status.textContent = "Reading " + f.name + "…";
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try { processCsvBatch(ev.target.result); }
+      catch(err){ status.textContent = "Couldn't read that file — check it's a CSV. (" + err.message + ")"; }
+    };
+    reader.onerror = () => { status.textContent = "Couldn't read that file."; };
+    reader.readAsText(f);
+  });
 
   card.querySelector("[data-go=landing]").addEventListener("click", ()=> go("landing"));
   card.querySelector("#form-sub").addEventListener("submit", e=>{
     e.preventDefault();
     const d2 = state.data;
     d2.onBehalfOf = card.querySelector("#onbehalf")?.value.trim() || "";
-    d2.account = card.querySelector("#account").value.trim();
-    d2.journal = card.querySelector("#journal").value.trim();
+    d2.idType = card.querySelector("#id-type")?.value || "account";
+    d2.journalBy = card.querySelector("#journal-by")?.value || "title";
+    d2.account = (card.querySelector("#account")?.value || "").trim();
+    if(d2.journalBy === "code"){
+      d2.journalCode = (card.querySelector("#journal-code")?.value || "").trim();
+      d2.journal = journalByCode(d2.journalCode);
+    } else {
+      d2.journal = (card.querySelector("#journal")?.value || "").trim();
+    }
     d2.errors = {};
-    if(!d2.account) d2.errors.account = "Enter your account number or the subscription email.";
-    if(!d2.journal) d2.errors.journal = "Pick or type the journal title.";
+    if(!d2.account) d2.errors.account = d2.idType === "po" ? "Enter the PO number." : "Enter the end-user account number.";
+    if(!d2.journal) d2.errors.journal = d2.journalBy === "code" ? "Enter a valid journal code." : "Pick the journal title.";
     if(Object.keys(d2.errors).length){
       announce("There are errors in the form. Please review and fix them.");
       render();
@@ -2774,36 +3861,32 @@ function renderIssues(){
         <div class="grid-2">
           <div class="field">
             <label for="vol-${idx}">Volume <span aria-hidden="true">*</span></label>
-            <input type="text" id="vol-${idx}" inputmode="numeric"
-              value="${escapeHtml(iss.volume)}" data-k="volume" data-i="${idx}"
+            <select id="vol-${idx}" data-k="volume" data-i="${idx}"
               aria-invalid="${!!(d.errors['volume-'+idx])}"
               ${d.errors['volume-'+idx] ? `aria-describedby="vol-err-${idx}"` : ""}>
+              <option value="">Select…</option>
+              ${publishedVolumes().map(v=>`<option value="${v}" ${iss.volume===v?'selected':''}>${v}</option>`).join("")}
+            </select>
             ${d.errors['volume-'+idx] ? `<span class="err" id="vol-err-${idx}">${d.errors['volume-'+idx]}</span>` : ""}
           </div>
           <div class="field">
             <label for="num-${idx}">Issue number <span aria-hidden="true">*</span></label>
-            <input type="text" id="num-${idx}" inputmode="numeric"
-              value="${escapeHtml(iss.number)}" data-k="number" data-i="${idx}"
+            <select id="num-${idx}" data-k="number" data-i="${idx}"
               aria-invalid="${!!(d.errors['number-'+idx])}"
               ${d.errors['number-'+idx] ? `aria-describedby="num-err-${idx}"` : ""}>
+              <option value="">Select…</option>
+              ${publishedIssues().map(n=>`<option value="${n}" ${iss.number===n?'selected':''}>${n}</option>`).join("")}
+            </select>
             ${d.errors['number-'+idx] ? `<span class="err" id="num-err-${idx}">${d.errors['number-'+idx]}</span>` : ""}
           </div>
         </div>
-        <div class="field">
-          <label for="pub-${idx}">Publication date <span aria-hidden="true">*</span></label>
-          <span class="hint">The date printed on the issue. If you only know the month, use the first of the month.</span>
-          <input type="date" id="pub-${idx}" value="${escapeHtml(iss.pubDate)}"
-            data-k="pubDate" data-i="${idx}"
-            aria-invalid="${!!(d.errors['pubDate-'+idx])}"
-            ${d.errors['pubDate-'+idx] ? `aria-describedby="pub-err-${idx}"` : ""}>
-          ${d.errors['pubDate-'+idx] ? `<span class="err" id="pub-err-${idx}">${d.errors['pubDate-'+idx]}</span>` : ""}
-        </div>
+        <p class="hint">Volume and issue are drawn from A2R's published-issue list, so only real issues can be picked. The publication date is looked up automatically — no need to enter it.</p>
       `;
       list.appendChild(wrap);
     });
 
-    list.querySelectorAll("input").forEach(inp=>{
-      inp.addEventListener("input", e=>{
+    list.querySelectorAll("select").forEach(inp=>{
+      inp.addEventListener("change", e=>{
         const i = +e.target.dataset.i, k = e.target.dataset.k;
         d.issues[i][k] = e.target.value;
       });
@@ -2836,9 +3919,10 @@ function renderIssues(){
     e.preventDefault();
     d.errors = {};
     d.issues.forEach((iss, i)=>{
-      if(!iss.volume) d.errors["volume-"+i] = "Enter the volume number.";
-      if(!iss.number) d.errors["number-"+i] = "Enter the issue number.";
-      if(!iss.pubDate) d.errors["pubDate-"+i] = "Enter the publication date.";
+      if(!iss.volume) d.errors["volume-"+i] = "Select the volume.";
+      if(!iss.number) d.errors["number-"+i] = "Select the issue number.";
+      // Publication date is looked up from A2R rather than entered.
+      if(!iss.pubDate) iss.pubDate = simulatePubDate();
     });
     if(Object.keys(d.errors).length){
       announce("Some issue details are missing.");
@@ -2906,23 +3990,6 @@ function renderReason(){
         </div>
       `;
       condEl.querySelector("#expected").addEventListener("input", e=> d.expectedBy = e.target.value);
-    }
-    if(d.reason === "damaged"){
-      condEl.innerHTML = `
-        <div class="reveal">
-          <div class="field" style="margin-bottom:0">
-            <label for="photo">Photo of the damage (optional)</label>
-            <span class="hint">A photo helps us settle your claim faster. Max one file, up to 5 MB.</span>
-            <input type="file" id="photo" accept="image/*" aria-describedby="photo-name">
-            <div id="photo-name" class="meta" style="margin-top:.3rem; font-size:.9rem; color:var(--ink-soft)">${d.damagePhotoName ? "Selected: " + escapeHtml(d.damagePhotoName) : ""}</div>
-          </div>
-        </div>
-      `;
-      condEl.querySelector("#photo").addEventListener("change", e=>{
-        const f = e.target.files[0];
-        d.damagePhotoName = f ? f.name : "";
-        condEl.querySelector("#photo-name").textContent = f ? "Selected: " + f.name : "";
-      });
     }
     if(d.reason === "other"){
       condEl.innerHTML = `
@@ -3034,7 +4101,6 @@ function renderReview(){
         <dl>
           <dt>What happened</dt><dd>${escapeHtml(reasonLabels[d.reason] || "")}</dd>
           ${d.reason === "not_received" && d.expectedBy ? `<dt>Expected by</dt><dd>${escapeHtml(fmtDate(d.expectedBy))}</dd>` : ``}
-          ${d.reason === "damaged" && d.damagePhotoName ? `<dt>Photo</dt><dd>${escapeHtml(d.damagePhotoName)}</dd>` : ``}
           ${d.reason === "other" ? `<dt>Details</dt><dd>${escapeHtml(d.otherDetails)}</dd>` : ``}
         </dl>
       </div>
@@ -3045,7 +4111,15 @@ function renderReview(){
       We check your claim against our policy as soon as you submit. You'll see the outcome on the next screen and we'll email it to you too.
     </div>
 
-    ${state.role === "internal" ? `<div class="open-q"><strong>Open question:</strong> Should Sage agents have a different authority level — e.g. override borderline declines on the spot?</div>` : ``}
+    ${state.role === "internal" ? `
+    <div class="notice" style="border-left-color:var(--navy)">
+      <label class="ctrl toggle" style="margin:0; display:flex; gap:.5rem; align-items:flex-start">
+        <input type="checkbox" id="tl-override">
+        <span><strong>Team-lead override</strong> — approve this claim regardless of the policy outcome. Use before submitting for a known exception (e.g. an escalated customer). Recorded as a manual approval.</span>
+      </label>
+    </div>
+    <div class="open-q"><strong>Note:</strong> Override is available to team leads; standard agents submit without it. Most overrides come from APAC exceptions.</div>
+    ` : ``}
 
     <div class="row" style="margin-top:.5rem">
       <button type="button" class="btn btn-secondary" data-go="reason">Back</button>
@@ -3063,13 +4137,20 @@ function renderReview(){
     });
   });
   card.querySelector("[data-go=reason].btn").addEventListener("click", ()=> go("reason"));
-  card.querySelector("#submit-claim").addEventListener("click", submitClaim);
+  card.querySelector("#submit-claim").addEventListener("click", ()=>{
+    const ov = card.querySelector("#tl-override");
+    state.data.override = !!(ov && ov.checked);
+    submitClaim();
+  });
 }
 
 /* ---------- 6. Submit + decide ---------- */
 function submitClaim(){
   const d = state.data;
-  const decision = decide();
+  let decision = decide();
+  if(d.override){
+    decision = {state:"approved", text:"Approved by a team-lead override before submission. Recorded as a manual approval.", next:"Replacement dispatched", nextDate: todayPlus(3)};
+  }
   d.submitted = {
     ref: makeRef(),
     decision: decision.state,
@@ -3077,24 +4158,31 @@ function submitClaim(){
     nextAction: decision.next,
     nextActionDate: decision.nextDate,
     submittedAt: new Date().toISOString(),
-    autoRule: decision.autoRule || null
+    autoRule: decision.autoRule || null,
+    declineCode: decision.declineCode || null
   };
   // Push into store so the dashboard sees it
   const sub = MOCK_SUBSCRIPTIONS[d.account] || Object.values(MOCK_SUBSCRIPTIONS).find(s=>s.email===d.account.toLowerCase());
+  const isInternal = state.role === "internal";
   const newClaim = {
     ref: d.submitted.ref,
     decision: d.submitted.decision,
     submittedAt: d.submitted.submittedAt,
-    submittedBy: state.role === "internal" ? "Marcus Hale (Sage)" : "External — claimant",
+    submittedBy: isInternal ? "Marcus Hale (Sage)" : "External — claimant",
     onBehalfOf: d.onBehalfOf || "",
     account: d.account,
     accountName: sub ? sub.name : "",
+    region: sub ? (sub.region || "row") : "row",
+    // Agent-entered claims are owned by that agent; external ones start unassigned
+    // (declined claims need no owner).
+    assignee: isInternal ? CURRENT_AGENT : (d.submitted.decision === "declined" ? null : null),
     journal: d.journal,
     issues: d.issues.map(i=>({volume:i.volume, number:i.number, pubDate:i.pubDate})),
     reason: d.reason,
     reasonText: d.submitted.reasonText,
     nextAction: d.submitted.nextAction,
     nextActionDate: d.submitted.nextActionDate,
+    declineCode: d.submitted.decision === "declined" ? (d.submitted.declineCode || "manual") : undefined,
     persona: state.persona || "none",
     autoRule: d.submitted.autoRule,
     emails: []
@@ -3117,20 +4205,19 @@ function decide(){
   // demo override
   if(state.outcome !== "auto"){
     if(state.outcome === "approved") return {state:"approved", text:"Your claim has been approved. A replacement is being arranged.", next:"Replacement dispatched", nextDate: todayPlus(3)};
-    if(state.outcome === "review")   return {state:"review",   text:"Your claim needs a closer look from a colleague before we can decide.", next:"Reviewer assigned",     nextDate: todayPlus(2)};
-    if(state.outcome === "declined") return {state:"declined", text:"We can't approve this claim under our current policy.", next:"Appeal window closes", nextDate: todayPlus(30)};
+    if(state.outcome === "review")   return {state:"review",   text:"This is a repeat claim for an issue we've already replaced. A team lead will check it before another copy is sent.", next:"Reviewer assigned",     nextDate: todayPlus(2)};
+    if(state.outcome === "declined") return {state:"declined", declineCode:"manual", text:"We can't approve this claim under our current policy.", next:"Decision made", nextDate: todayPlus(0)};
   }
 
-  // FAST-TRACK: rules engine check (runs before everything else)
-  // If the claimant matches an enabled persona rule AND the claim is within that rule's scope,
-  // auto-approve without further validation. The rule id is attached so it appears in the auto-approved feed.
+  // ADMINISTRATOR RULES: if the claimant matches an enabled example rule AND the claim is
+  // within that rule's scope, auto-approve. The rule id is attached so it shows in the audit feed.
   if(state.persona && state.persona !== "none"){
     const candidate = { reason: d.reason, issues: d.issues, persona: state.persona };
     const rule = findFastTrackRule(candidate);
     if(rule){
       return {
         state:"approved",
-        text:`Auto-approved under the "${rule.persona}" fast-track rule. A replacement is being arranged.`,
+        text:`Auto-approved under the "${rule.persona}" administrator rule. A replacement is being arranged.`,
         next:"Replacement dispatched",
         nextDate: todayPlus(3),
         autoRule: rule.id
@@ -3138,34 +4225,181 @@ function decide(){
     }
   }
 
-  // mocked policy rules
+  // mocked policy rules (the agreed claims policy)
   const sub = MOCK_SUBSCRIPTIONS[d.account] || Object.values(MOCK_SUBSCRIPTIONS).find(s=>s.email===d.account.toLowerCase());
-  if(sub && sub.active === false){
-    return {state:"declined", text:"This subscription wasn't active when the issue was published.", next:"Appeal window closes", nextDate: todayPlus(30)};
+
+  // Repeat-claim policy: count copies already sent for this subscription + issue.
+  // 4th attempt (after 3 copies sent) declines; a 2nd/3rd request goes to review.
+  const priorMax = Math.max(0, ...d.issues.map(i => priorCopiesSent(d.account, d.journal, i.volume, i.number)));
+  if(priorMax >= 3){
+    return {state:"declined", declineCode:"repeat_cap", text:DECLINE_REASONS.repeat_cap.text, next:"Decision made", nextDate: todayPlus(0)};
   }
-  // outside 90-day window?
-  const outside = d.issues.some(i=> daysBetween(i.pubDate) != null && daysBetween(i.pubDate) > 90);
+
+  // Not yet published?
+  const notPublished = d.issues.some(i => daysBetween(i.pubDate) != null && daysBetween(i.pubDate) < 0);
+  if(notPublished){
+    return {state:"declined", declineCode:"not_published", text:DECLINE_REASONS.not_published.text, next:"Decision made", nextDate: todayPlus(0)};
+  }
+  // Too early — still within the regional delivery window (treated as ~28 days here for the demo).
+  const tooEarly = d.issues.some(i => { const dd = daysBetween(i.pubDate); return dd != null && dd >= 0 && dd < 28; });
+  if(tooEarly){
+    return {state:"declined", declineCode:"too_soon", text:DECLINE_REASONS.too_soon.text, next:"Decision made", nextDate: todayPlus(0)};
+  }
+  // Outside the six-month claim window?
+  const outside = d.issues.some(i=> daysBetween(i.pubDate) != null && daysBetween(i.pubDate) > POLICY_WINDOW_DAYS);
   if(outside){
-    return {state:"declined", text:"One or more issues are outside the 90-day claim window from their publication date.", next:"Appeal window closes", nextDate: todayPlus(30)};
+    return {state:"declined", declineCode:"out_of_window", text:DECLINE_REASONS.out_of_window.text, next:"Decision made", nextDate: todayPlus(0)};
   }
-  // duplicate?
-  const dup = d.issues.some(i => PRIOR_CLAIMS.some(p =>
-    p.account === d.account && p.journal === d.journal &&
-    p.volume === i.volume && p.issue === i.number));
-  if(dup){
-    return {state:"declined", text:"There's already a claim on file for one of these issues on this subscription.", next:"Appeal window closes", nextDate: todayPlus(30)};
+  // No print subscription (modelled by an inactive print component on the account).
+  if(sub && sub.active === false){
+    return {state:"declined", declineCode:"no_print", text:DECLINE_REASONS.no_print.text, next:"Decision made", nextDate: todayPlus(0)};
   }
-  // systemic flag — more than 5 claims for same issue
-  const systemic = d.issues.some(i => (AGGREGATE_CLAIMS[`${d.journal}|${i.volume}|${i.number}`] || 0) > 5);
-  if(systemic){
-    return {state:"review", text:"Several other people have reported the same issue. A colleague is checking whether there's a wider distribution problem.", next:"Reviewer assigned", nextDate: todayPlus(2)};
-  }
-  // damaged with no photo — soft review
-  if(d.reason === "damaged" && !d.damagePhotoName){
-    return {state:"review", text:"Damaged-issue claims without a photo go to a colleague for a quick check.", next:"Reviewer assigned", nextDate: todayPlus(2)};
+  // Repeat claim (1 or 2 copies already sent) → manual review.
+  if(priorMax >= 1){
+    return {
+      state:"review",
+      text: priorMax === 2
+        ? "Two replacement copies have already been sent for this issue. A third request needs a team-lead check; if approved it will be sent by courier."
+        : "A replacement copy has already been sent for this issue. A second request needs a team-lead check before another copy is sent.",
+      next:"Reviewer assigned",
+      nextDate: todayPlus(2)
+    };
   }
   // otherwise approve
   return {state:"approved", text:"Your claim has been approved. A replacement is being arranged.", next:"Replacement dispatched", nextDate: todayPlus(3)};
+}
+
+/* ---------- CSV bulk upload → one batch of individual claims ---------- */
+// Policy decision for a single parsed row (mirrors decide(), without the demo overrides).
+function policyDecision(account, journal, issues, reason){
+  const priorMax = Math.max(0, ...issues.map(i => priorCopiesSent(account, journal, i.volume, i.number)));
+  if(priorMax >= 3) return {decision:"declined", declineCode:"repeat_cap", reasonText:"Claim limit reached — three copies already sent. Customer must repurchase."};
+  if(issues.some(i => { const dd = daysBetween(i.pubDate); return dd != null && dd < 0; }))
+    return {decision:"declined", declineCode:"not_published", reasonText:"Issue not yet published."};
+  if(issues.some(i => { const dd = daysBetween(i.pubDate); return dd != null && dd >= 0 && dd < 28; }))
+    return {decision:"declined", declineCode:"too_soon", reasonText:"Too early to claim — still within the regional delivery window."};
+  if(issues.some(i => { const dd = daysBetween(i.pubDate); return dd != null && dd > POLICY_WINDOW_DAYS; }))
+    return {decision:"declined", declineCode:"out_of_window", reasonText:"Outside the six-month claim window."};
+  const sub = MOCK_SUBSCRIPTIONS[account];
+  if(sub && sub.active === false) return {decision:"declined", declineCode:"no_print", reasonText:"No print component on this account."};
+  if(priorMax >= 1) return {decision:"review", reasonText: priorMax===2 ? "Third request — needs a team-lead check (courier if approved)." : "Second request — needs a team-lead check."};
+  return {decision:"approved", reasonText:"Approved. A replacement is being arranged."};
+}
+
+// Very small CSV parser. Splits on commas; tolerates an optional header row.
+function parseCsv(text){
+  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  if(!lines.length) return [];
+  const header = lines[0].toLowerCase();
+  const hasHeader = /account|journal|volume|issue|reason|email/.test(header);
+  const cols = hasHeader ? lines[0].split(",").map(s=>s.trim().toLowerCase()) : ["account","journal","volume","issue","reason","email"];
+  const rows = (hasHeader ? lines.slice(1) : lines).map(line=>{
+    const cells = line.split(",").map(s=>s.trim());
+    const obj = {};
+    cols.forEach((c,i)=> obj[c] = cells[i] || "");
+    return obj;
+  });
+  return rows;
+}
+
+const BATCH = { ref:"", rows:[], email:"" };
+
+function processCsvBatch(text){
+  const parsed = parseCsv(text);
+  const status = document.getElementById("csv-status");
+  if(!parsed.length){ if(status) status.textContent = "No rows found in that file."; return; }
+
+  const batchRef = "CLM-B-" + (Math.floor(Math.random()*9000)+1000);
+  let confirmEmail = "";
+  const rows = [];
+  let n = 0;
+  parsed.forEach(r => {
+    const account = r.account || "";
+    const journal = r.journal || MOCK_JOURNALS[0];
+    const issues = [{ volume: r.volume || "61", number: r.issue || "1", pubDate: simulatePubDate() }];
+    const reason = r.reason || "not_received";
+    confirmEmail = confirmEmail || r.email || (MOCK_SUBSCRIPTIONS[account]||{}).email || "";
+    const res = policyDecision(account, journal, issues, reason);
+    const ref = "CLM-" + (Math.floor(Math.random()*900000)+100000);
+    const sub = MOCK_SUBSCRIPTIONS[account];
+    const claim = {
+      ref, decision: res.decision,
+      submittedAt: new Date().toISOString(),
+      submittedBy: "Marcus Hale (Sage)",
+      onBehalfOf: confirmEmail,
+      batchRef,
+      claimGroup: batchRef,
+      account, accountName: sub ? sub.name : (account || "Unknown account"),
+      region: sub ? (sub.region || "row") : "row",
+      assignee: res.decision === "declined" ? null : CURRENT_AGENT,
+      journal, issues, reason,
+      reasonText: res.reasonText,
+      declineCode: res.decision === "declined" ? (res.declineCode || "manual") : undefined,
+      nextAction: res.decision === "approved" ? "Replacement dispatched" : res.decision === "review" ? "Reviewer assigned" : "Decision made",
+      nextActionDate: res.decision === "review" ? todayPlus(2) : res.decision === "approved" ? todayPlus(3) : todayPlus(0),
+      flag: res.decision === "review" ? "repeat" : undefined,
+      persona: "none", autoRule: null, emails: []
+    };
+    CLAIMS_STORE.items.unshift(claim);
+    rows.push(claim);
+    n++;
+  });
+
+  BATCH.ref = batchRef;
+  BATCH.rows = rows;
+  BATCH.email = confirmEmail || "the agent's address on file";
+  if(status) status.textContent = `${n} rows read. Opening batch ${batchRef}…`;
+  go("batch");
+}
+
+/* ---------- Batch review screen ---------- */
+function renderBatch(){
+  setCrumbs([{label:homeLabel(), go:homeStep()}, {label:"Batch " + BATCH.ref}]);
+  setStepbar(null);
+  const counts = {
+    approved: BATCH.rows.filter(c=>c.decision==="approved").length,
+    review: BATCH.rows.filter(c=>c.decision==="review").length,
+    declined: BATCH.rows.filter(c=>c.decision==="declined").length
+  };
+  const wrap = document.createElement("div");
+  wrap.className = "stack";
+  wrap.innerHTML = `
+    <section class="card">
+      <h1>Batch ${escapeHtml(BATCH.ref)}</h1>
+      <p class="lede">${BATCH.rows.length} claims processed from the uploaded file. Each has its own reference; they share this batch reference.</p>
+      <p><strong>${counts.approved}</strong> approved · <strong>${counts.review}</strong> need review · <strong>${counts.declined}</strong> declined</p>
+      <div class="notice">
+        <span class="ui">One consolidated email</span>
+        A single confirmation summarising all ${BATCH.rows.length} claims has been sent to <strong>${escapeHtml(BATCH.email)}</strong> — not one email per row.
+      </div>
+    </section>
+    <div class="claims-table-wrap">
+      <table class="claims-table">
+        <thead><tr>
+          <th scope="col">Reference</th><th scope="col">Account</th>
+          <th scope="col">Journal &amp; issue</th><th scope="col">Outcome</th>
+        </tr></thead>
+        <tbody>
+          ${BATCH.rows.map(c=>`
+            <tr data-ref="${escapeHtml(c.ref)}" tabindex="0">
+              <td data-label="Reference"><a href="#" class="row-link ref-cell" data-ref="${escapeHtml(c.ref)}">${escapeHtml(c.ref)}</a></td>
+              <td data-label="Account"><div>${escapeHtml(c.accountName)}</div><div class="meta-cell">${escapeHtml(c.account)}</div></td>
+              <td data-label="Journal & issue"><div>${escapeHtml(c.journal)}</div><div class="meta-cell">Vol ${escapeHtml(c.issues[0].volume)}, no. ${escapeHtml(c.issues[0].number)}</div></td>
+              <td data-label="Outcome"><span class="badge" data-state="${c.decision}"><span class="dot" aria-hidden="true"></span>${c.decision==="approved"?"Approved":c.decision==="review"?"Needs review":"Declined"}</span></td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="row"><button class="btn btn-secondary" data-go="dashboard">Back to dashboard</button></div>
+  `;
+  view.appendChild(wrap);
+  wrap.querySelector("[data-go=dashboard]").addEventListener("click", ()=> go("dashboard"));
+  wrap.querySelectorAll("tr[data-ref]").forEach(tr=>{
+    const open = ()=>{ state.selectedRef = tr.dataset.ref; go("claim-detail"); };
+    tr.addEventListener("click", e=>{ if(!e.target.closest("a")) open(); });
+    const a = tr.querySelector("a.row-link");
+    a && a.addEventListener("click", e=>{ e.preventDefault(); state.selectedRef = a.dataset.ref; go("claim-detail"); });
+  });
 }
 
 /* ---------- 7. Decision ---------- */
@@ -3187,11 +4421,14 @@ function renderDecision(){
   };
   const wrap = document.createElement("div");
   wrap.className = "stack";
+  const decRegion = (claim && claim.region) || regionFor(d.account);
+  const decWin = deliveryWindow(decRegion);
+  const decEta = estimatedArrival(s.nextActionDate, decRegion);
   const nextSentence = s.decision === "approved"
-    ? `Next: <strong>${escapeHtml(s.nextAction.toLowerCase())}</strong> by ${escapeHtml(fmtDate(s.nextActionDate))}. We'll email you when the replacement is on its way.`
+    ? `Next: <strong>${escapeHtml(s.nextAction.toLowerCase())}</strong> by ${escapeHtml(fmtDate(s.nextActionDate))}. It goes by standard post to ${escapeHtml(decWin.label)} — allow around ${decWin.minW}–${decWin.maxW} weeks, so estimated arrival is by <strong>${escapeHtml(fmtDate(decEta))}</strong>. We'll email you when it's on its way.`
     : s.decision === "review"
     ? `Next: a colleague reviews it within two working days. We'll email our decision by ${escapeHtml(fmtDate(s.nextActionDate))}.`
-    : `Next: if you think we've got this wrong, you can appeal by ${escapeHtml(fmtDate(s.nextActionDate))}.`;
+    : `Next: this decision is final under our claims policy. The customer can reply to the confirmation email if they'd like to discuss it.`;
 
   const emails = (claim && claim.emails) || [];
   const emailBlock = state.autoEmail && emails.length ? `
@@ -3243,10 +4480,10 @@ function renderDecision(){
         <li data-state="done">Claim submitted<span class="when">${fmtDate(s.submittedAt.slice(0,10))}</span></li>
         <li data-state="current">${escapeHtml(s.nextAction)}<span class="when">expected by ${fmtDate(s.nextActionDate)}</span></li>
         ${s.decision === "approved"
-          ? `<li>Replacement delivered<span class="when">usually within 10 working days</span></li>`
+          ? `<li>Replacement delivered<span class="when">estimated arrival by ${fmtDate(decEta)} · ${decWin.minW}–${decWin.maxW} weeks, ${escapeHtml(decWin.label)}</span></li>`
           : s.decision === "review"
           ? `<li>Decision sent to you<span class="when">by email</span></li>`
-          : `<li>Appeal closes<span class="when">${fmtDate(s.nextActionDate)}</span></li>`}
+          : `<li data-state="done">Decision made<span class="when">${fmtDate(s.submittedAt.slice(0,10))}</span></li>`}
       </ul>
     </section>
 
@@ -3255,18 +4492,14 @@ function renderDecision(){
       <p>Note down your reference number — <strong>${s.ref}</strong> — so you can track the claim later. You can also bookmark this page.</p>
       <div class="row">
         <button type="button" class="btn btn-primary" id="view-tracker">Track this claim</button>
-        ${s.decision === "declined" ? `<button type="button" class="btn btn-secondary" id="appeal">Appeal this decision</button>` : ``}
         <button type="button" class="btn btn-tertiary" data-go="landing">Start another claim</button>
       </div>
-      ${s.decision === "declined" ? `<div class="open-q"><strong>Open question:</strong> Should the appeal route be an in-app form, or a direct contact with a human?</div>` : ``}
     </section>
   `;
   view.appendChild(wrap);
 
   wrap.querySelector("#view-tracker").addEventListener("click", ()=> go("tracker"));
   wrap.querySelector("[data-go=landing]").addEventListener("click", ()=> go("landing"));
-  const appeal = wrap.querySelector("#appeal");
-  appeal && appeal.addEventListener("click", ()=> openAppealDialog(s.ref));
 
   // Wire email preview + mailto on decision screen
   wrap.querySelectorAll("[data-dec-preview]").forEach(btn=>{
@@ -3360,45 +4593,10 @@ The original would have been sent from ${email.from} to ${email.to}.
   });
 }
 
-/* ---------- Appeal dialog (native <dialog>) ---------- */
-function openAppealDialog(ref){
-  let dlg = document.getElementById("appeal-dialog");
-  if(dlg) dlg.remove();
-  dlg = document.createElement("dialog");
-  dlg.id = "appeal-dialog";
-  dlg.setAttribute("aria-labelledby", "appeal-title");
-  dlg.innerHTML = `
-    <form method="dialog" aria-label="Appeal a declined claim">
-      <h2 id="appeal-title">Appeal claim ${escapeHtml(ref)}</h2>
-      <p>Tell us why you think this decision is wrong. A colleague will review your appeal and reply within five working days.</p>
-      <div class="field">
-        <label for="appeal-reason">Why are you appealing? <span aria-hidden="true">*</span></label>
-        <textarea id="appeal-reason" required></textarea>
-      </div>
-      <div class="open-q"><strong>Open question:</strong> Should the appeal route be an in-app form like this, or a direct contact with a named person on the customer services team?</div>
-      <div class="row end" style="margin-top:1rem">
-        <button type="button" class="btn btn-tertiary" id="appeal-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="appeal-send">Send appeal</button>
-      </div>
-    </form>
-  `;
-  document.body.appendChild(dlg);
-  dlg.showModal();
-  dlg.querySelector("#appeal-cancel").addEventListener("click", ()=> dlg.close());
-  dlg.querySelector("form").addEventListener("submit", e=>{
-    const txt = dlg.querySelector("#appeal-reason").value.trim();
-    if(!txt){
-      e.preventDefault();
-      dlg.querySelector("#appeal-reason").focus();
-      return;
-    }
-    announce("Appeal sent. You'll hear back within five working days.");
-    setTimeout(()=>{
-      dlg.close();
-      alert("Appeal received. (Prototype only — no real email sent.)");
-    }, 50);
-  });
-}
+/* ---------- Appeals removed ----------
+   The workshop decided against an appeal process: once a decision is made it is
+   recorded as "decision made". A declined claimant can reply to the confirmation
+   email to discuss it, but there is no in-app appeal route. */
 
 /* ---------- 8a. Track lookup ---------- */
 function renderTrackLookup(){
@@ -3480,6 +4678,7 @@ function renderTracker(){
     <section class="card">
       <h2>Next action</h2>
       <p><strong>${escapeHtml(s.nextAction)}</strong> — expected by ${fmtDate(s.nextActionDate)}.</p>
+      ${s.decision === "approved" ? `<p class="hint">Replacements go by standard post. Allow around four to six weeks for delivery (six to eight for Asia-Pacific) from the dispatch date above.</p>` : ``}
       <ul class="timeline">
         <li data-state="done">Submitted<span class="when">${fmtDate(s.submittedAt.slice(0,10))}</span></li>
         <li data-state="${s.decision === 'review' ? 'current' : 'done'}">Decision made<span class="when">${s.decision === 'review' ? 'in progress' : fmtDate(s.submittedAt.slice(0,10))}</span></li>
@@ -3522,9 +4721,9 @@ document.getElementById("home-link").addEventListener("click", e=>{
 /* ---------- demo controls ---------- */
 document.getElementById("demo-role").addEventListener("change", e=>{
   state.role = e.target.value;
-  announce("Role changed to " + (state.role === "internal" ? "Internal Sage team" : "External claimant"));
-  // Send user to the appropriate home (dashboard for internal, landing for external)
-  // and reset wizard data so they don't see half-filled forms
+  const labels = { internal:"Internal Sage team", manager:"Claims manager", "ext-agent":"Subscription agent", "ext-individual":"Individual customer", "ext-institution":"Institutional customer" };
+  announce("Role changed to " + (labels[state.role] || state.role));
+  // Send user to the appropriate home and reset wizard data
   state.data = blank();
   state.selectedRef = null;
   go("landing");
